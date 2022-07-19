@@ -7,7 +7,7 @@ const cardSchema = new Schema(
             type: String
         },
         card_number: {
-            type: Number
+            type: String
         },
         group: {
             type: String
@@ -54,4 +54,4 @@ const cardSchema = new Schema(
 //   }
 // })
 
-module.exports = mongoose.model('Book', bookSchema)
+module.exports = mongoose.model('Card', cardSchema)

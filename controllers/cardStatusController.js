@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer');
-const Card = require('../models/card')
+const Card = require('../models/card');
 
 (async () => {
     const browser = await puppeteer.launch({headless: false});
@@ -30,7 +30,7 @@ const Card = require('../models/card')
     await page.screenshot({'path': `../images/${imageName}`, 'clip': {'x': x, 'y': y, 'width': w, 'height': h}});
 
     while (true) {
-        let captchaCode = await Card.findOne({card_number: cardNumber});
+        let captchaCode = await Card.findOne({card_number: card.card_number}).select("captcha_code");
         if (captchaCode) {
             break;
         }
