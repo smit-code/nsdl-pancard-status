@@ -9,6 +9,6 @@ const authorize = require('../middleware/jwtAuth')
 
 router.use('/auth', auth)
 router.use('/admin', authorize(['admin']), admin)
-router.use('/common', common)
+router.use('/', common)
 
 module.exports = router

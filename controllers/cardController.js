@@ -108,5 +108,12 @@ exports.deleteCard = async (req, res, next) => {
 }
 
 exports.getCardStatus = async (req, res, next) => {
+    let {cardNumber} = req.params;
+
+    let card = await Card.findOne({card_number: cardNumber});
+    if(!card){
+        console.log("Card not found")
+    }
+
 
 }

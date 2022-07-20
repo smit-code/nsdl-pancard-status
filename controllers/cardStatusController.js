@@ -48,7 +48,7 @@ const Card = require('../models/card');
 })();
 
 async function getCard(){
-    let card = await Card.findOne({card_number: "CKSPD1830K"});
+
     return card;
 }
 
