@@ -1,3 +1,4 @@
+const puppeteer = require('puppeteer');
 const Card = require('../models/card')
 const {prepareSuccessResponse} = require('../utils/responseHandler')
 
@@ -108,11 +109,54 @@ exports.deleteCard = async (req, res, next) => {
 }
 
 exports.getCardStatus = async (req, res, next) => {
-    let {cardNumber} = req.params;
+    try{
+        let {cardNumber} = req.params;
 
-    let card = await Card.findOne({card_number: cardNumber});
-    if(!card){
-        console.log("Card not found")
+        let card = await Card.findOne({card_number: cardNumber});
+        if(!card){
+            console.log("Card not found")
+        }
+        const browser = await puppeteer.launch({headless: false});
+        const page = await browser.newPage();
+        await page.setViewport({width: 1200, height: 720});
+        await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
+            waitUntil: 'networkidle2',
+        });
+
+        // fetching card details
+
+        // Entering card number
+        await page.type('#pannum', card.card_number);
+        // Selecting year
+        await page.select('select[name="assessmentYear"]', '2022-2023');
+
+        await page.waitForSelector('#imgCode');          // wait for the selector to load
+        const element = await page.$('#imgCode');
+        const box = await element.boundingBox();
+        const x = box['x'];                                // coordinate x
+        const y = box['y'];                                // coordinate y
+        const w = box['width'];                            // area width
+        const h = box['height'];
+
+        let imageName = cardNumber + "-" + Date.now() + ".png";
+        await Card.findOneAndUpdate({card_number: card.card_number},{captcha_image: imageName });
+
+        await page.screenshot({'path': `./images/${imageName}`, 'clip': {'x': x, 'y': y, 'width': w, 'height': h}});
+
+        let captchaCode;
+        while (true) {
+            console.log("IN")
+            captchaCode = await Card.findOne({card_number: card.card_number}).select("captcha_code");
+            if (captchaCode.captcha_code) {
+                break;
+            }
+        }
+
+        await page.type('#HID_IMG_TXT', captchaCode);
+
+
+    }catch (e) {
+       console.log(e)
     }
 
 
