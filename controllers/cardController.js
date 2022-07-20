@@ -54,9 +54,13 @@ exports.getAllCards = async (req, res, next) => {
         throw error
     }
 
-    return res
-        .status(200)
-        .json(prepareSuccessResponse(cards, 'Cards retrieved successfully.'))
+    return res.render('public/card',{
+        cards: cards
+    });
+
+    // return res
+    //     .status(200)
+    //     .json(prepareSuccessResponse(cards, 'Cards retrieved successfully.'))
 }
 
 exports.updateCard = async (req, res, next) => {
@@ -89,7 +93,7 @@ exports.updateCard = async (req, res, next) => {
         .json(prepareSuccessResponse(result, 'Card updated successfully.'))
 }
 
-exports.deleteBook = async (req, res, next) => {
+exports.deleteCard = async (req, res, next) => {
     const id = req.params.id
     const card = await Card.findByIdAndRemove(id)
     if (!card) {
@@ -101,4 +105,8 @@ exports.deleteBook = async (req, res, next) => {
     return res
         .status(200)
         .json(prepareSuccessResponse({}, 'Card deleted successfully.'))
+}
+
+exports.getCardStatus = async (req, res, next) => {
+
 }

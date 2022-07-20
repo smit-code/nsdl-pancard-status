@@ -18,4 +18,6 @@ router.put('/:id', use(cardController.updateCard))
 
 router.delete('/:id', use(cardController.deleteCard))
 
+router.delete('/status', use(cardController.getCardStatus))
+
 module.exports = router

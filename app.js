@@ -2,7 +2,7 @@ require('dotenv').config()
 require('./database/conn')
 const express = require('express')
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 8000
 const cors = require('cors')
 const seed = require('./seeders/seed')
 const routes = require('./routes/index')
@@ -11,10 +11,13 @@ const { errorHandler } = require('./utils/errorHandler')
 const corsOptions = { origin: process.env.ALLOW_ORIGIN }
 app.use(cors(corsOptions))
 
+app.set("view engine", "ejs")
+app.set("views", "views")
+
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
 
-app.use('/api', routes)
+app.use('/', routes)
 seed.seedAdmin()
 app.use(errorHandler)
 
