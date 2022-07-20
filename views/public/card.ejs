@@ -7,7 +7,7 @@
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-
+    <script src="jquery-3.6.0.min.js"></script>
     <title>Pan Card!</title>
 </head>
 <body>
@@ -33,7 +33,7 @@
                 <td><%-card.card_number%></td>
                 <td><%-card.group%></td>
                 <td>
-                    <a href="cards/status/<%-card.card_number%>" type="button" class="btn btn-dark ml-5">Get Status</a>
+                    <a href="cards/status/<%-card.card_number%>" type="button" class="btn btn-dark ml-5 card_status">Get Status</a>
                     <a type="button" class="btn btn-dark ml-5">Edit</a>
                     <a type="button" class="btn btn-dark ml-5">Delete</a>
                 </td>

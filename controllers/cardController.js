@@ -152,8 +152,9 @@ exports.getCardStatus = async (req, res, next) => {
             }
         }
 
-        await page.type('#HID_IMG_TXT', captchaCode);
+        await page.type('#HID_IMG_TXT', captchaCode.captcha_code);
 
+        // Get Response and save TABLE data
 
     }catch (e) {
        console.log(e)
