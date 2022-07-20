@@ -11,6 +11,7 @@ const Card = require('../models/card');
 
    // fetching card details
     let card = await Card.findOne({card_number: "CKSPD1830K"});
+    console.log("card",card)
 
     // Entering card number
      await page.type('#pannum', card.card_number);
@@ -29,12 +30,15 @@ const Card = require('../models/card');
 
     await page.screenshot({'path': `../images/${imageName}`, 'clip': {'x': x, 'y': y, 'width': w, 'height': h}});
 
+    let captchaCode;
     while (true) {
-        let captchaCode = await Card.findOne({card_number: card.card_number}).select("captcha_code");
+        captchaCode = await Card.findOne({card_number: card.card_number}).select("captcha_code");
         if (captchaCode) {
             break;
         }
     }
+
+    await page.type('#HID_IMG_TXT', captchaCode);
 
 
     // Need to pass Captcha
@@ -42,3 +46,8 @@ const Card = require('../models/card');
 
     await browser.close();
 })();
+
+async function getCard(){
+    let card = await Card.findOne({card_number: "CKSPD1830K"});
+    return card;
+}
