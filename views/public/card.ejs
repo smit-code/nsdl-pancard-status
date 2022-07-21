@@ -20,6 +20,12 @@
         <th scope="col">Card Number</th>
         <th scope="col">Group</th>
         <th scope="col">Actions</th>
+        <th scope="col">Assessment Year</th>
+        <th scope="col">Mode Of Payment</th>
+        <th scope="col">Reference Number</th>
+        <th scope="col">Status</th>
+        <th scope="col">Account Number</th>
+        <th scope="col">Date</th>
     </tr>
     </thead>
     <tbody>
@@ -37,6 +43,12 @@
                     <a type="button" class="btn btn-dark ml-5">Edit</a>
                     <a type="button" class="btn btn-dark ml-5">Delete</a>
                 </td>
+                <td><%-card.assessment_year && card.assessment_year %></td>
+                <td><%-card.mode_of_payment && card.mode_of_payment %></td>
+                <td><%-card.reference_number && card.reference_number %></td>
+                <td><%-card.status && card.status %></td>
+                <td><%-card.account_number && card.account_number %></td>
+                <td><%-card.date && card.date %></td>
             <%}) %>
         <% } %>
 
