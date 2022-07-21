@@ -151,8 +151,24 @@ exports.getCardStatus = async (req, res, next) => {
         break
       }
     }
+    await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
+    await Card.findOneAndUpdate({ card_number: card.card_number },{captcha_code:''})
+    console.log("captcha added")
+    console.log("captcha pass")
 
-    await page.type('#HID_IMG_TXT', captchaCode.captcha_code)
+    await Promise.all([
+      page.click('.btn-info'),
+      page.waitForNavigation({ waitUntil: 'networkidle2' }),
+    ]);
+    console.log("Form Submit")
+
+    const data = await page.evaluate(() => {
+      const tds = Array.from(document.querySelectorAll('table tr td'))
+      return tds.map(td => td.innerText)
+    });
+
+    console.log(JSON.stringify(data));
+    //await browser.close();
 
     // Get Response and save TABLE data
   } catch (e) {
