@@ -2,25 +2,25 @@ const mongoose = require('mongoose')
 const Schema = mongoose.Schema
 
 const cardSchema = new Schema({
-        name: {
-            type: String
-        },
-        card_number: {
-            type: String
-        },
-        group: {
-            type: String
-        },
-        captcha_image: {
-            type: String
-        },
-        captcha_code: {
-            type: String
-        }
-    },
-    {
-        timestamps: true
-    })
+  name: {
+    type: String
+  },
+  card_number: {
+    type: String
+  },
+  group: {
+    type: String
+  },
+  captcha_image: {
+    type: String
+  },
+  captcha_code: {
+    type: String
+  }
+},
+{
+  timestamps: true
+})
 
 // cardSchema.pre('save', async function (next, done) {
 //   const errorsMsg = {

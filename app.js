@@ -11,8 +11,8 @@ const { errorHandler } = require('./utils/errorHandler')
 const corsOptions = { origin: process.env.ALLOW_ORIGIN }
 app.use(cors(corsOptions))
 
-app.set("view engine", "ejs")
-app.set("views", "views")
+app.set('view engine', 'ejs')
+app.set('views', 'views')
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
