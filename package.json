@@ -24,6 +24,9 @@
     "jsonwebtoken": "^8.5.1",
     "mongoose": "^6.0.14",
     "puppeteer": "^15.4.0",
+    "puppeteer-extra": "^3.3.4",
+    "puppeteer-extra-plugin-stealth": "^2.11.0",
+    "random-useragent": "^0.5.0",
     "tesseract.js": "^2.1.1"
   },
   "devDependencies": {
