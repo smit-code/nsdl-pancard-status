@@ -117,7 +117,7 @@ exports.deleteCard = async (req, res, next) => {
         .json(prepareSuccessResponse({}, 'Card deleted successfully.'))
 }
 
-exports.getCardStatus = async (req, res, next) => {
+/*exports.getCardStatus = async (req, res, next) => {
     try {
         const {cardNumber} = req.params
 
@@ -153,115 +153,6 @@ exports.getCardStatus = async (req, res, next) => {
         await page.screenshot({path: `./images/${imageName}`, clip: {x, y, width: w, height: h}})
 
         // captchaCode Pass
-
-
-
-
-
-
-
-
-
-        const userAgent = randomUseragent.getRandom();
-        const UA = userAgent || USER_AGENT;
-        const page2 = await browser.newPage();
-
-        //Randomize viewport size
-        await page2.setViewport({
-            width: 1920 + Math.floor(Math.random() * 100),
-            height: 3000 + Math.floor(Math.random() * 100),
-            deviceScaleFactor: 1,
-            hasTouch: false,
-            isLandscape: false,
-            isMobile: false,
-        });
-
-        await page2.setUserAgent(UA);
-        await page2.setJavaScriptEnabled(true);
-        await page2.setDefaultNavigationTimeout(0);
-
-        //Skip images/styles/fonts loading for performance
-        await page2.setRequestInterception(true);
-        page2.on('request', (req) => {
-            if(req.resourceType() == 'stylesheet' || req.resourceType() == 'font' || req.resourceType() == 'image'){
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        await page2.evaluateOnNewDocument(() => {
-            // Pass webdriver check
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
-            });
-        });
-
-        await page2.evaluateOnNewDocument(() => {
-            // Pass chrome check
-            window.chrome = {
-                runtime: {},
-                // etc.
-            };
-        });
-
-        await page2.evaluateOnNewDocument(() => {
-            //Pass notifications check
-            const originalQuery = window.navigator.permissions.query;
-            return window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-            );
-        });
-
-        await page2.evaluateOnNewDocument(() => {
-            // Overwrite the `plugins` property to use a custom getter.
-            Object.defineProperty(navigator, 'plugins', {
-                // This just needs to have `length > 0` for the current test,
-                // but we could mock the plugins too if necessary.
-                get: () => [1, 2, 3, 4, 5],
-            });
-        });
-
-        await page2.evaluateOnNewDocument(() => {
-            // Overwrite the `languages` property to use a custom getter.
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en'],
-            });
-        });
-
-        await page2.goto('https://azcaptcha.com/demo', { waitUntil: 'networkidle2',timeout: 0 } );
-
-        await page2.waitForSelector('input[type="file"]')
-        const file = await Promise.all([`./images/${imageName}`]);
-        const input = await page2.$('input[type="file"]')
-        await input.uploadFile(...file);
-
-        console.log('before waiting 15 sec');
-        await page2.waitForTimeout(15000)
-        console.log('End 15 sec waiting');
-
-        //await page2.click(".recaptcha-checkbox-checkmark")
-
-        console.log('before waiting 02 sec');
-        await page2.waitForTimeout(4000)
-        console.log('End 02 sec waiting');
-
-        const captchaCodee = await page2.evaluate(() => {
-            const tds = Array.from(document.querySelectorAll('table tr td'))
-            return tds.map(td => td.innerText)
-        });
-
-        console.log("captchaCodee",captchaCodee)
-
-
-
-
-
-
-
-
         let captchaCode
         while (true) {
             console.log('IN')
@@ -309,6 +200,91 @@ exports.getCardStatus = async (req, res, next) => {
     } catch (e) {
         console.log(e)
     }
+}*/
+
+exports.getAllCardStatus = async (req, res) => {
+    console.log("HITTING")
+
+    const cards = await Card.find()
+    if (!cards) {
+        console.log('Cards not found')
+    }
+
+    await Promise.all(cards.map(async (card) => {
+        console.log("1")
+
+        const browser = await puppeteer.launch({headless: false})
+        const page = await browser.newPage()
+        await page.setViewport({width: 1200, height: 720})
+        await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
+            waitUntil: 'networkidle2'
+        })  
+
+        // fetching card details
+
+        // Entering card number
+        await page.type('#pannum', card.card_number)
+        // Selecting year
+        await page.select('select[name="assessmentYear"]', '2022-2023')
+
+        await page.waitForSelector('#imgCode') // wait for the selector to load
+        const element = await page.$('#imgCode')
+        const box = await element.boundingBox()
+        const x = box.x // coordinate x
+        const y = box.y // coordinate y
+        const w = box.width // area width
+        const h = box.height
+
+        const imageName = card.card_number + '-' + Date.now() + '.png'
+        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
+
+        await page.screenshot({path: `./images/${imageName}`, clip: {x, y, width: w, height: h}})
+
+        // captchaCode Pass
+        let captchaCode
+        while (true) {
+            console.log('IN')
+            captchaCode = await Card.findOne({card_number: card.card_number}).select('captcha_code')
+            if (captchaCode.captcha_code) {
+                break
+            }
+        }
+        await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
+        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '',captcha_image: '' })
+        console.log("captcha added")
+        console.log("captcha pass")
+
+        await Promise.all([
+            page.click('.btn-info'),
+            page.waitForNavigation({waitUntil: 'networkidle2'}),
+        ]);
+        console.log("Form Submit")
+
+        const data = await page.evaluate(() => {
+            const tds = Array.from(document.querySelectorAll('table tr td'))
+            return tds.map(td => td.innerText)
+        });
+
+        let result = JSON.parse(JSON.stringify(data))
+        console.log("resultresult", result)
+
+        const preCard = {
+            assessment_year: result[1],
+            mode_of_payment: result[2],
+            reference_number: result[3],
+            status: result[4],
+            account_number: result[5],
+            date: result[6]
+        }
+
+        const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
+        console.log("result", updatedCard)
+        await browser.close();
+    }))
+
+
+
+    res.send(prepareSuccessResponse({}, "Success"))
 }
 
 exports.addCaptchaCode = async (req, res, next) => {
@@ -329,10 +305,4 @@ exports.addCaptchaCode = async (req, res, next) => {
     } catch (e) {
         console.log(e)
     }
-}
-
-function delay(time) {
-    return new Promise(function(resolve) {
-        setTimeout(resolve, time)
-    });
 }

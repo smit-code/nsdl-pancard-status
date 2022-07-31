@@ -7,11 +7,11 @@
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-    <script src="jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <title>Pan Card!</title>
 </head>
 <body>
-
+<a href="/cards/all-card/status" type="button" class="btn btn-dark ml-5 all-card-status">Status</a>
 <table class="table">
     <thead>
     <tr>
@@ -30,7 +30,7 @@
     </thead>
     <tbody>
     <tr>
-        <% if(cards !="undefined" && cards && cards.length){ %>
+        <% if(cards !=="undefined" && cards && cards.length){ %>
             <% cards.forEach(card=>{ %>
             <%  console.log("card",card)%>
 
@@ -73,23 +73,16 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
 -->
 <script>
-    $("button").click(function(e) {
+/*    $(".all-card-status").click(function(e) {
         e.preventDefault();
-        $.ajax({
-            type: "POST",
-            url: "/pages/test/",
-            data: {
-                id: $(this).val(), // < note use of 'this' here
-                access_token: $("#access_token").val()
-            },
-            success: function(result) {
-                alert('ok');
-            },
-            error: function(result) {
-                alert('error');
-            }
-        });
-    });
+        console.log("IN Click Script")
+        let cards = 50
+
+        for( let i = 1; i < cards; i++)
+        {
+            console.log("i",i)
+        }
+    });*/
 
 </script>
 

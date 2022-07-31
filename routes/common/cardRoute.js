@@ -20,6 +20,8 @@ router.delete('/:id', use(cardController.deleteCard))
 
 router.get('/status/:cardNumber', use(cardController.getCardStatus))
 
+router.get('/all-card/status', use(cardController.getAllCardStatus))
+
 router.post('/add-captcha/:cardNumber', use(cardController.addCaptchaCode))
 
 module.exports = router
