@@ -22,6 +22,8 @@ router.get('/status/:cardNumber', use(cardController.getCardStatus))
 
 router.get('/all-card/status', use(cardController.getAllCardStatus))
 
-router.post('/add-captcha/:cardNumber', use(cardController.addCaptchaCode))
+router.post('/add-captcha', use(cardController.addCaptchaCode))
+
+router.get('/aaa/get-captcha-image', use(cardController.getCaptchaImage))
 
 module.exports = router

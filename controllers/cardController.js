@@ -218,7 +218,7 @@ exports.getAllCardStatus = async (req, res) => {
         await page.setViewport({width: 1200, height: 720})
         await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
             waitUntil: 'networkidle2'
-        })  
+        })
 
         // fetching card details
 
@@ -238,7 +238,7 @@ exports.getAllCardStatus = async (req, res) => {
         const imageName = card.card_number + '-' + Date.now() + '.png'
         await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
 
-        await page.screenshot({path: `./images/${imageName}`, clip: {x, y, width: w, height: h}})
+        await page.screenshot({path: `./public/images/${imageName}`, clip: {x, y, width: w, height: h}})
 
         // captchaCode Pass
         let captchaCode
@@ -282,20 +282,18 @@ exports.getAllCardStatus = async (req, res) => {
         await browser.close();
     }))
 
-
-
     res.send(prepareSuccessResponse({}, "Success"))
 }
 
 exports.addCaptchaCode = async (req, res, next) => {
     try {
-        const {cardNumber} = req.params
-
+        console.log("Add Captcha")
+        let { captcha } = req.body
         const updateCaptchaCode = {
-            captcha_code: req.body.captcha_code
+            captcha_code: captcha
         }
 
-        const card = await Card.findOneAndUpdate({card_number: cardNumber}, updateCaptchaCode)
+        const card = await Card.findOneAndUpdate({captcha_image:{$exists:true}}, updateCaptchaCode)
         if (!card) {
             console.log('Card not found')
         }
@@ -305,4 +303,11 @@ exports.addCaptchaCode = async (req, res, next) => {
     } catch (e) {
         console.log(e)
     }
+}
+
+exports.getCaptchaImage = async (req, res, next) => {
+    console.log("In controller")
+    let imageName = await Card.findOne({captcha_image:{$exists:true}})
+    console.log("imageName",imageName)
+    res.redirect('/cards')
 }

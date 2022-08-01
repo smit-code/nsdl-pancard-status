@@ -56,7 +56,30 @@
     </tbody>
 </table>
 
-
+<div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLabel">Captcha Alert!</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="/cards/add-captcha" method="POST">
+                    <div class="mb-3 add-image">
+                        <label for="recipient-name" class="col-form-label">Captcha Image:</label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="captcha" class="form-label">Captcha Code</label>
+                        <input type="text" class="form-control" name="captcha" id="captcha" placeholder="Enter Captcha Code">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-dark">Add Captcha</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 
 
@@ -73,17 +96,36 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
 -->
 <script>
-/*    $(".all-card-status").click(function(e) {
-        e.preventDefault();
-        console.log("IN Click Script")
-        let cards = 50
+    $(document).ready(function() {
+        console.log("IN")
+        function callForImage() {
+            console.log("1")
+            $.ajax({
+                url: "/cards/aaa/get-captcha-image",
+                type: "get",
+                success: function (data) {
+                    if (data.success) {
+                       console.log(data)
+                         if(data.data.captcha_image){
+                             let abc = data.data.captcha_image
+                                 console.log("abc",abc)
+                            $('.add-image').prepend(`<img alt="captcha" id="captcha_image" src="/images/${abc}"/>`)
+                            $("#exampleModal").modal("toggle");
+                         }
+                    } else {
+                        console.log("Else")
+                    }
+                },
+            });
 
-        for( let i = 1; i < cards; i++)
-        {
-            console.log("i",i)
         }
-    });*/
 
+        //Call Every 30 Sec
+        callForImage();
+        setInterval(callForImage, 60*500);
+
+
+    });
 </script>
 
 </body>
