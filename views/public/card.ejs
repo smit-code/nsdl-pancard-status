@@ -104,16 +104,18 @@
                 url: "/cards/aaa/get-captcha-image",
                 type: "get",
                 success: function (data) {
+                    console.log(data)
                     if (data.success) {
-                       console.log(data)
                          if(data.data.captcha_image){
-                             let abc = data.data.captcha_image
-                                 console.log("abc",abc)
-                            $('.add-image').prepend(`<img alt="captcha" id="captcha_image" src="/images/${abc}"/>`)
+                             let captchaImage = data.data.captcha_image
+                                 console.log("abc",captchaImage)
+                            $('.add-image').prepend(`<img alt="captcha" id="captcha_image" src="/images/${captchaImage}"/>`)
                             $("#exampleModal").modal("toggle");
+                         } else {
+                             console.log("Captcha image not found")
                          }
                     } else {
-                        console.log("Else")
+                        console.log("Controller Error")
                     }
                 },
             });

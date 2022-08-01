@@ -213,7 +213,8 @@ exports.getAllCardStatus = async (req, res) => {
     await Promise.all(cards.map(async (card) => {
         console.log("1")
 
-        const browser = await puppeteer.launch({headless: false})
+        // const browser = await puppeteer.launch({headless: false})
+        const browser = await puppeteer.launch()
         const page = await browser.newPage()
         await page.setViewport({width: 1200, height: 720})
         await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
@@ -297,11 +298,10 @@ exports.addCaptchaCode = async (req, res, next) => {
         if (!card) {
             console.log('Card not found')
         }
-        return res
-            .status(200)
-            .json(prepareSuccessResponse({}, 'Card updated successfully.'))
+        return res.redirect('/cards')
     } catch (e) {
         console.log(e)
+        return res.redirect('/cards')
     }
 }
 
@@ -309,5 +309,5 @@ exports.getCaptchaImage = async (req, res, next) => {
     console.log("In controller")
     let imageName = await Card.findOne({captcha_image:{$exists:true}})
     console.log("imageName",imageName)
-    res.redirect('/cards')
+    return res.json(prepareSuccessResponse(imageName, "Captcha image fetch successfully"))
 }
