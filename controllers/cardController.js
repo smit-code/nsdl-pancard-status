@@ -301,7 +301,7 @@ exports.addCaptchaCode = async (req, res, next) => {
         return res.redirect('/cards')
     } catch (e) {
         console.log(e)
-        return res.redirect('/cards')
+        return res.redirect('/')
     }
 }
 
