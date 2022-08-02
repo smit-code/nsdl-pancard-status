@@ -13,7 +13,7 @@
     <title>Pan Card!</title>
 </head>
 <body>
-<a  href="/cards/all-card/status" type="button" class="btn btn-dark ml-5 all-card-status">Status</a>
+<a  href="/all-card/status" type="button" class="btn btn-dark ml-5 all-card-status">Status</a>
 
 <div class="main-content">
     <div class="container mt-5">
@@ -104,7 +104,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form action="/cards/add-captcha" method="POST">
+                <form action="/add-captcha" method="POST">
                     <div class="mb-3 add-image">
                         <label for="recipient-name" class="col-form-label">Captcha Image:</label>
                     </div>
@@ -154,7 +154,7 @@
         function callForImage() {
             console.log("1")
             $.ajax({
-                url: "/cards/aaa/get-captcha-image",
+                url: "/aaa/get-captcha-image",
                 type: "get",
                 success: function (data) {
                     console.log(data)

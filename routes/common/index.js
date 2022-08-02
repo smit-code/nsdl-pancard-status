@@ -4,6 +4,6 @@ const bookRoutes = require('./bookRoute')
 const cardRoutes = require('./cardRoute')
 
 router.use('/books', bookRoutes)
-router.use('/cards', cardRoutes)
+router.use('/', cardRoutes)
 
 module.exports = router
