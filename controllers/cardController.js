@@ -214,7 +214,12 @@ exports.getAllCardStatus = async (req, res) => {
         console.log("1")
 
         // const browser = await puppeteer.launch({headless: false})
-        const browser = await puppeteer.launch()
+        const browser = await puppeteer.launch({
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+            ],
+        })
         const page = await browser.newPage()
         await page.setViewport({width: 1200, height: 720})
         await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
@@ -298,10 +303,10 @@ exports.addCaptchaCode = async (req, res, next) => {
         if (!card) {
             console.log('Card not found')
         }
-        return res.redirect('/cards')
+        return res.redirect('/')
     } catch (e) {
         console.log(e)
-        return res.redirect('/cards')
+        return res.redirect('/')
     }
 }
 
