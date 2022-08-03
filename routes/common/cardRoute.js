@@ -26,4 +26,6 @@ router.post('/add-captcha', use(cardController.addCaptchaCode))
 
 router.get('/aaa/get-captcha-image', use(cardController.getCaptchaImage))
 
+router.get('/aaa/add-cards-json', use(cardController.addUserDataFromJson))
+
 module.exports = router

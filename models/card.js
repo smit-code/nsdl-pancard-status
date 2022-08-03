@@ -2,6 +2,9 @@ const mongoose = require('mongoose')
 const Schema = mongoose.Schema
 
 const cardSchema = new Schema({
+        id: {
+            type: Number
+        },
         name: {
             type: String
         },
@@ -9,6 +12,15 @@ const cardSchema = new Schema({
             type: String
         },
         group: {
+            type: String
+        },
+        bill_amount: {
+            type: String
+        },
+        tds_rate: {
+            type: String
+        },
+        tds_amount: {
             type: String
         },
         captcha_image: {
@@ -34,6 +46,9 @@ const cardSchema = new Schema({
         },
         date: {
             type: String
+        },
+        is_confirmed: {
+            type: Number
         }
     },
     {

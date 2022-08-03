@@ -45,12 +45,12 @@
                             </tr>
                             </thead>
                             <tbody>
-                            <tr>
+
                                 <% if(cards !=="undefined" && cards && cards.length){ %>
                                     <% cards.forEach(card=>{ %>
                                         <%  console.log("card",card)%>
-
-                                        <td>1</td>
+                                <tr>
+                                        <td><%-card.id%></td>
                                         <td><%-card.name%></td>
                                         <td><%-card.card_number%></td>
                                         <td><%-card.group%></td>
@@ -60,10 +60,11 @@
                                         <td><%-card.status && card.status %></td>
                                         <td><%-card.account_number && card.account_number %></td>
                                         <td><%-card.date && card.date %></td>
+                                </tr>
                                     <%}) %>
                                 <% } %>
 
-                            </tr>
+
                             </tbody>
                         </table>
                     </div>
@@ -180,9 +181,7 @@
 
         //Call Every 30 Sec
         callForImage();
-        setInterval(callForImage, 60*200);
-
-
+        setInterval(callForImage, 60*150);
     });
 </script>
 
