@@ -163,7 +163,7 @@ exports.getAllCardStatus = async (req, res) => {
         while (true) {
             console.log('IN')
             captchaCode = await Card.findOne({card_number: card.card_number})
-            console.log("captchaCode", captchaCode)
+            //console.log("captchaCode", captchaCode)
             if (captchaCode.captcha_code) {
                 break
             }
@@ -185,7 +185,7 @@ exports.getAllCardStatus = async (req, res) => {
         });
 
         let result = JSON.parse(JSON.stringify(data))
-        console.log("resultresult", result)
+        //console.log("resultresult", result)
 
         const preCard = {
             assessment_year: result[1],
@@ -200,8 +200,8 @@ exports.getAllCardStatus = async (req, res) => {
         console.log("preCard",preCard)
 
         const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
-        console.log("result", updatedCard)
-        //await browser.close();
+        //console.log("result", updatedCard)
+        await browser.close();
     })
     console.log("Out")
 
