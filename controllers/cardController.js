@@ -117,102 +117,17 @@ exports.deleteCard = async (req, res, next) => {
         .json(prepareSuccessResponse({}, 'Card deleted successfully.'))
 }
 
-/*exports.getCardStatus = async (req, res, next) => {
-    try {
-        const {cardNumber} = req.params
-
-        const card = await Card.findOne({card_number: cardNumber})
-        if (!card) {
-            console.log('Card not found')
-        }
-        const browser = await puppeteer.launch({headless: false})
-        const page = await browser.newPage()
-        await page.setViewport({width: 1200, height: 720})
-        await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
-            waitUntil: 'networkidle2'
-        })
-
-        // fetching card details
-
-        // Entering card number
-        await page.type('#pannum', card.card_number)
-        // Selecting year
-        await page.select('select[name="assessmentYear"]', '2022-2023')
-
-        await page.waitForSelector('#imgCode') // wait for the selector to load
-        const element = await page.$('#imgCode')
-        const box = await element.boundingBox()
-        const x = box.x // coordinate x
-        const y = box.y // coordinate y
-        const w = box.width // area width
-        const h = box.height
-
-        const imageName = cardNumber + '-' + Date.now() + '.png'
-        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
-
-        await page.screenshot({path: `./images/${imageName}`, clip: {x, y, width: w, height: h}})
-
-        // captchaCode Pass
-        let captchaCode
-        while (true) {
-            console.log('IN')
-            captchaCode = await Card.findOne({card_number: card.card_number}).select('captcha_code')
-            if (captchaCode.captcha_code) {
-                break
-            }
-        }
-        await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
-        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: ''})
-        console.log("captcha added")
-        console.log("captcha pass")
-
-        await Promise.all([
-            page.click('.btn-info'),
-            page.waitForNavigation({waitUntil: 'networkidle2'}),
-        ]);
-        console.log("Form Submit")
-
-        const data = await page.evaluate(() => {
-            const tds = Array.from(document.querySelectorAll('table tr td'))
-            return tds.map(td => td.innerText)
-        });
-
-        let result = JSON.parse(JSON.stringify(data))
-        console.log("resultresult", result)
-
-        const preCard = {
-            assessment_year: result[1],
-            mode_of_payment: result[2],
-            reference_number: result[3],
-            status: result[4],
-            account_number: result[5],
-            date: result[6]
-        }
-
-        const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
-        console.log("result", updatedCard)
-
-
-        await browser.close();
-        return res.redirect('/cards')
-
-        // Get Response and save TABLE data
-    } catch (e) {
-        console.log(e)
-    }
-}*/
-
 exports.getAllCardStatus = async (req, res) => {
     console.log("HITTING")
 
-    const cards = await Card.find()
+    const cards = await Card.find({is_synced:0, is_dispatched: 0}).sort("id").limit(20);
     if (!cards) {
         console.log('Cards not found')
     }
 
+    console.log("In")
     await Promise.all(cards.map(async (card) => {
         console.log("1")
-
         // const browser = await puppeteer.launch({headless: false})
         const browser = await puppeteer.launch({
             args: [
@@ -225,9 +140,6 @@ exports.getAllCardStatus = async (req, res) => {
         await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
             waitUntil: 'networkidle2'
         })
-
-        // fetching card details
-
         // Entering card number
         await page.type('#pannum', card.card_number)
         // Selecting year
@@ -250,13 +162,14 @@ exports.getAllCardStatus = async (req, res) => {
         let captchaCode
         while (true) {
             console.log('IN')
-            captchaCode = await Card.findOne({card_number: card.card_number}).select('captcha_code')
+            captchaCode = await Card.findOne({card_number: card.card_number})
+            console.log("captchaCode", captchaCode)
             if (captchaCode.captcha_code) {
                 break
             }
         }
         await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
-        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '',captcha_image: '' })
+        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '', captcha_image: ''})
         console.log("captcha added")
         console.log("captcha pass")
 
@@ -278,18 +191,21 @@ exports.getAllCardStatus = async (req, res) => {
             assessment_year: result[1],
             mode_of_payment: result[2],
             reference_number: result[3],
-            status: result[4],
+            status: result[4] ? result[4] : "No records found",
             account_number: result[5],
             date: result[6],
-            is_confirmed: 1
+            is_synced: 1,
+            is_dispatched: result[4] && result[1] ? 1 : 0,
         }
+        console.log("preCard",preCard)
 
         const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
         console.log("result", updatedCard)
-        await browser.close();
+        //await browser.close();
     }))
+    console.log("Out")
 
-    res.send(prepareSuccessResponse({}, "Success"))
+    res.send(prepareSuccessResponse({}, "Success AAAA"))
 }
 
 exports.addCaptchaCode = async (req, res, next) => {
@@ -300,7 +216,7 @@ exports.addCaptchaCode = async (req, res, next) => {
             captcha_code: captcha
         }
 
-        const card = await Card.findOneAndUpdate({captcha_image:{$exists:true}}, updateCaptchaCode)
+        const card = await Card.findOneAndUpdate({captcha_image:{$exists:true, $ne: ""}}, updateCaptchaCode)
         if (!card) {
             console.log('Card not found')
         }
@@ -313,9 +229,13 @@ exports.addCaptchaCode = async (req, res, next) => {
 
 exports.getCaptchaImage = async (req, res, next) => {
     console.log("In controller")
-    let imageName = await Card.findOne({captcha_image:{$exists:true}})
+    let imageName = await Card.findOne({captcha_image:{$exists:true, $ne: ""}})
     console.log("imageName",imageName)
-    return res.json(prepareSuccessResponse(imageName, "Captcha image fetch successfully"))
+    if(imageName){
+        return res.json(prepareSuccessResponse(imageName, "Captcha image fetch successfully"))
+    }else{
+        return res.json(prepareErrorResponse("Captcha image not  found"))
+    }
 }
 
 exports.addUserDataFromJson = async (req, res) => {

@@ -47,8 +47,13 @@ const cardSchema = new Schema({
         date: {
             type: String
         },
-        is_confirmed: {
-            type: Number
+        is_synced: {
+            type: Number,
+            default: 0
+        },
+        is_dispatched: {
+            type: Number,
+            default: 0
         }
     },
     {
