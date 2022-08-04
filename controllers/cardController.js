@@ -120,7 +120,7 @@ exports.deleteCard = async (req, res, next) => {
 exports.getAllCardStatus = async (req, res) => {
     console.log("HITTING")
 
-    const cards = await Card.find({is_synced:0, is_dispatched: 0}).sort("id").limit(20);
+    const cards = await Card.find({is_synced:0, is_dispatched: 0}).sort("id").limit(12);
     if (!cards) {
         console.log('Cards not found')
     }
