@@ -126,7 +126,7 @@ exports.getAllCardStatus = async (req, res) => {
     }
 
     console.log("In")
-    await Promise.all(cards.map(async (card) => {
+    await cards.map(async (card) => {
         console.log("1")
         // const browser = await puppeteer.launch({headless: false})
         const browser = await puppeteer.launch({
@@ -202,7 +202,7 @@ exports.getAllCardStatus = async (req, res) => {
         const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
         console.log("result", updatedCard)
         //await browser.close();
-    }))
+    })
     console.log("Out")
 
     res.send(prepareSuccessResponse({}, "Success AAAA"))
