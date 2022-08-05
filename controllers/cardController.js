@@ -3,6 +3,7 @@ const puppeteer = require('puppeteer-extra')
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 puppeteer.use(StealthPlugin())
 const randomUseragent = require('random-useragent');
+const fs = require('fs');
 
 const Card = require('../models/card')
 
@@ -248,7 +249,7 @@ exports.getAllCardStatus = async (req, res) => {
         // wait for 1 second
         await page.waitForTimeout(1000)
 
-        await page.screenshot({path: `./public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+        await page.screenshot({path: `public/images/${imageName}`, clip: {x, y, width: w, height: h}})
 
         // captchaCode Pass
         let captchaCode
