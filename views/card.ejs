@@ -21,7 +21,7 @@
 <table class="table mt-5">
     <thead>
     <tr>
-        <th scope="col">Sync</th>
+<!--        <th scope="col">Sync</th>-->
         <th scope="col">#</th>
         <th scope="col">NAME</th>
         <th scope="col">CARD NUMBER</th>
@@ -39,7 +39,7 @@
     <% if(cards !=="undefined" && cards && cards.length){ %>
         <% cards.forEach(card=>{ %>
         <tr>
-            <td> <a href="/card/status/<%-card._id%>" type="button" class="btn btn-dark ml-5 all-card-status">Sync</a></td>
+<!--            <td> <a href="/card/status/<%-card._id%>" type="button" class="btn btn-dark ml-5 all-card-status">Sync</a></td>-->
             <td><%-card.id%></td>
             <td><%-card.name%></td>
             <td><%-card.card_number%></td>

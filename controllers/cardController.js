@@ -65,7 +65,7 @@ exports.getAllCards = async (req, res, next) => {
         throw error
     }
 
-    return res.render('public/card', {
+    return res.render('card', {
         cards
     })
 
@@ -210,7 +210,7 @@ exports.getCardStatus = async (req, res) => {
 exports.getAllCardStatus = async (req, res) => {
     console.log("HITTING")
 
-    const cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(1);
+    const cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(20);
     if (!cards) {
         console.log('Cards not found')
     }
@@ -249,7 +249,7 @@ exports.getAllCardStatus = async (req, res) => {
         // wait for 1 second
         await page.waitForTimeout(1000)
 
-        await page.screenshot({path: `public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+        await page.screenshot({path: `./public/images/${imageName}`, clip: {x, y, width: w, height: h}})
 
         // captchaCode Pass
         let captchaCode
