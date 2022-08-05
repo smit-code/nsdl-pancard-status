@@ -209,7 +209,7 @@ exports.getCardStatus = async (req, res) => {
 exports.getAllCardStatus = async (req, res) => {
     console.log("HITTING")
 
-    const cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(5);
+    const cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(1);
     if (!cards) {
         console.log('Cards not found')
     }
