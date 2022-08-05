@@ -117,16 +117,105 @@ exports.deleteCard = async (req, res, next) => {
         .json(prepareSuccessResponse({}, 'Card deleted successfully.'))
 }
 
+exports.getCardStatus = async (req, res) => {
+    console.log("Single Card HITTING")
+    const {cardID} = req.params
+
+    const card = await Card.find({_id: cardID})
+    if (!card) {
+        console.log('Cards not found')
+    }
+
+    // const browser = await puppeteer.launch({headless: false})
+    const browser = await puppeteer.launch({
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+        ],
+    })
+    const page = await browser.newPage()
+    await page.setViewport({width: 1200, height: 720})
+    await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
+        waitUntil: 'networkidle2'
+    })
+    // Entering card number
+    await page.type('#pannum', card.card_number)
+    // Selecting year
+    await page.select('select[name="assessmentYear"]', '2022-2023')
+
+    await page.waitForSelector('#imgCode') // wait for the selector to load
+    const element = await page.$('#imgCode')
+    const box = await element.boundingBox()
+    const x = box.x // coordinate x
+    const y = box.y // coordinate y
+    const w = box.width // area width
+    const h = box.height
+
+    const imageName = card.card_number + '-' + Date.now() + '.png'
+    await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
+
+    // wait for 1 second
+    await page.waitForTimeout(1000)
+
+    await page.screenshot({path: `./public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+
+    // captchaCode Pass
+    let captchaCode
+    while (true) {
+        console.log('IN')
+        captchaCode = await Card.findOne({card_number: card.card_number})
+        //console.log("captchaCode", captchaCode)
+        if (captchaCode.captcha_code) {
+            break
+        }
+    }
+
+    await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
+    await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '', captcha_image: ''})
+
+
+    await page.click('.btn-info')
+    await page.waitForNavigation({waitUntil: 'networkidle2'})
+
+    const data = await page.evaluate(() => {
+        const tds = Array.from(document.querySelectorAll('table tr td'))
+        return tds.map(td => td.innerText)
+    });
+
+    let result = JSON.parse(JSON.stringify(data))
+    //console.log("resultresult", result)
+
+    const preCard = {
+        assessment_year: result[1],
+        mode_of_payment: result[2],
+        reference_number: result[3],
+        status: result[4] ? result[4] : "No records found",
+        account_number: result[5],
+        date: result[6],
+        is_synced: 1,
+        is_dispatched: result[4] && result[1] ? 1 : 0,
+    }
+    console.log("preCard", preCard)
+
+    const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
+    //console.log("result", updatedCard)
+    await browser.close();
+
+    console.log("Out")
+
+    res.redirect("/")
+}
+
 exports.getAllCardStatus = async (req, res) => {
     console.log("HITTING")
 
-    const cards = await Card.find({is_synced:0, is_dispatched: 0}).sort("id").limit(10);
+    const cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(8);
     if (!cards) {
         console.log('Cards not found')
     }
 
     console.log("In")
-    await cards.map(async (card) => {
+    await Promise.all(await cards.map(async (card) => {
         console.log("1")
         // const browser = await puppeteer.launch({headless: false})
         const browser = await puppeteer.launch({
@@ -155,6 +244,9 @@ exports.getAllCardStatus = async (req, res) => {
 
         const imageName = card.card_number + '-' + Date.now() + '.png'
         await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
+
+        // wait for 1 second
+        await page.waitForTimeout(1000)
 
         await page.screenshot({path: `./public/images/${imageName}`, clip: {x, y, width: w, height: h}})
 
@@ -197,26 +289,27 @@ exports.getAllCardStatus = async (req, res) => {
             is_synced: 1,
             is_dispatched: result[4] && result[1] ? 1 : 0,
         }
-        console.log("preCard",preCard)
+        console.log("preCard", preCard)
 
         const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
         //console.log("result", updatedCard)
         await browser.close();
-    })
+    }))
+
     console.log("Out")
 
-    res.send(prepareSuccessResponse({}, "Success AAAA"))
+    res.redirect("/")
 }
 
 exports.addCaptchaCode = async (req, res, next) => {
     try {
         console.log("Add Captcha")
-        let { captcha } = req.body
+        let {captcha} = req.body
         const updateCaptchaCode = {
             captcha_code: captcha
         }
 
-        const card = await Card.findOneAndUpdate({captcha_image:{$exists:true, $ne: ""}}, updateCaptchaCode)
+        const card = await Card.findOneAndUpdate({captcha_image: {$exists: true, $ne: ""}}, updateCaptchaCode)
         if (!card) {
             console.log('Card not found')
         }
@@ -229,11 +322,11 @@ exports.addCaptchaCode = async (req, res, next) => {
 
 exports.getCaptchaImage = async (req, res, next) => {
     console.log("In controller")
-    let imageName = await Card.findOne({captcha_image:{$exists:true, $ne: ""}})
-    console.log("imageName",imageName)
-    if(imageName){
+    let imageName = await Card.findOne({captcha_image: {$exists: true, $ne: ""}})
+    console.log("imageName", imageName)
+    if (imageName) {
         return res.json(prepareSuccessResponse(imageName, "Captcha image fetch successfully"))
-    }else{
+    } else {
         return res.json(prepareErrorResponse("Captcha image not  found"))
     }
 }
@@ -1481,7 +1574,7 @@ exports.addUserDataFromJson = async (req, res) => {
             const card = await newCard.save()
         }))
 
-        return res.send(prepareSuccessResponse({},"Cards saved successfully"))
+        return res.send(prepareSuccessResponse({}, "Cards saved successfully"))
     } catch (e) {
         return res.send(e)
     }

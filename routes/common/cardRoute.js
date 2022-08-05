@@ -20,6 +20,8 @@ router.delete('/:id', use(cardController.deleteCard))
 
 router.get('/all-card/status', use(cardController.getAllCardStatus))
 
+router.get('/card/status/:cardID', use(cardController.getCardStatus))
+
 router.post('/add-captcha', use(cardController.addCaptchaCode))
 
 router.get('/aaa/get-captcha-image', use(cardController.getCaptchaImage))

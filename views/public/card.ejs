@@ -4,11 +4,11 @@
     <!-- Required meta tags -->
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/credit-card.png">
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700" rel="stylesheet">
-    <link rel="stylesheet" href="/css/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <title>Pan Card!</title>
 </head>
@@ -18,86 +18,43 @@
     <a href="/all-card/status" type="button" class="btn btn-dark ml-5 all-card-status">Sync Cards</a>
 </div>
 
-<div class="main-content">
-    <div class="container mt-5">
-        <!-- Table -->
-        <div class="row">
+<table class="table mt-5">
+    <thead>
+    <tr>
+        <th scope="col">Sync</th>
+        <th scope="col">#</th>
+        <th scope="col">NAME</th>
+        <th scope="col">CARD NUMBER</th>
+        <th scope="col">GROUP</th>
+        <th scope="col">ASSESSMENT YEAR</th>
+        <th scope="col">MODE OF PAYMENT</th>
+        <th scope="col">REFERENCE NUMBER</th>
+        <th scope="col">STATUS</th>
+        <th scope="col">ACCOUNT NUMBER</th>
+        <th scope="col">DATE</th>
+    </tr>
+    </thead>
+    <tbody>
 
-            <div class="col">
-                <div class="card shadow">
-                    <div class="card-header border-0">
-                        <h3 class="mb-0">Pan Card Status</h3>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table align-items-center table-flush">
-                            <thead class="thead-light">
-                            <tr>
-                                <th scope="col">#</th>
-                                <th scope="col">NAME</th>
-                                <th scope="col">CARD NUMBER</th>
-                                <th scope="col">GROUP</th>
-                                <th scope="col">ASSESSMENT YEAR</th>
-                                <th scope="col">MODE OF PAYMENT</th>
-                                <th scope="col">REFERENCE NUMBER</th>
-                                <th scope="col">STATUS</th>
-                                <th scope="col">ACCOUNT NUMBER</th>
-                                <th scope="col">DATE</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-
-                                <% if(cards !=="undefined" && cards && cards.length){ %>
-                                    <% cards.forEach(card=>{ %>
-                                <tr>
-                                        <td><%-card.id%></td>
-                                        <td><%-card.name%></td>
-                                        <td><%-card.card_number%></td>
-                                        <td><%-card.group%></td>
-                                        <td><%-card.assessment_year && card.assessment_year %></td>
-                                        <td><%-card.mode_of_payment && card.mode_of_payment %></td>
-                                        <td><%-card.reference_number && card.reference_number %></td>
-                                        <td><%-card.status && card.status %></td>
-                                        <td><%-card.account_number && card.account_number %></td>
-                                        <td><%-card.date && card.date %></td>
-                                </tr>
-                                    <%}) %>
-                                <% } %>
-
-
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="card-footer py-4">
-                        <nav aria-label="...">
-                            <ul class="pagination justify-content-end mb-0">
-                                <li class="page-item disabled">
-                                    <a class="page-link" href="#" tabindex="-1">
-                                        <i class="fas fa-angle-left"></i>
-                                        <span class="sr-only">Previous</span>
-                                    </a>
-                                </li>
-                                <li class="page-item active">
-                                    <a class="page-link" href="#">1</a>
-                                </li>
-                                <li class="page-item">
-                                    <a class="page-link" href="#">2 <span class="sr-only">(current)</span></a>
-                                </li>
-                                <li class="page-item"><a class="page-link" href="#">3</a></li>
-                                <li class="page-item">
-                                    <a class="page-link" href="#">
-                                        <i class="fas fa-angle-right"></i>
-                                        <span class="sr-only">Next</span>
-                                    </a>
-                                </li>
-                            </ul>
-                        </nav>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-</div>
+    <% if(cards !=="undefined" && cards && cards.length){ %>
+        <% cards.forEach(card=>{ %>
+        <tr>
+            <td> <a href="/card/status/<%-card._id%>" type="button" class="btn btn-dark ml-5 all-card-status">Sync</a></td>
+            <td><%-card.id%></td>
+            <td><%-card.name%></td>
+            <td><%-card.card_number%></td>
+            <td><%-card.group%></td>
+            <td><%-card.assessment_year && card.assessment_year %></td>
+            <td><%-card.mode_of_payment && card.mode_of_payment %></td>
+            <td><%-card.reference_number && card.reference_number %></td>
+            <td><%-card.status && card.status %></td>
+            <td><%-card.account_number && card.account_number %></td>
+            <td><%-card.date && card.date %></td>
+        </tr>
+        <%}) %>
+    <% } %>
+    </tbody>
+</table>
 
 <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -180,7 +137,7 @@
 
         //Call Every 30 Sec
         callForImage();
-        setInterval(callForImage, 60*200);
+        setInterval(callForImage, 60*250);
     });
 </script>
 
