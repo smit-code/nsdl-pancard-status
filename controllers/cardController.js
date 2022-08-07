@@ -227,7 +227,7 @@ exports.getAllCardStatus = async (req, res) => {
         })
         const page = await browser.newPage()
         await page.setViewport({width: 1200, height: 720})
-        await page.goto('https://tin.tin.nsdl.com/oltas/refund-status-pan.html', {
+        await page.goto(process.env.SITE_URL, {
             waitUntil: 'networkidle2'
         })
         // Entering card number
