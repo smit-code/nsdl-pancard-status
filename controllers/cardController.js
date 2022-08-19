@@ -360,7 +360,7 @@ exports.getAllCardStatusNew = async (req, res) => {
             // wait for 1 second
             await page.waitForTimeout(1000)
 
-            await page.screenshot({path: `public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+            await page.screenshot({path: `/images/${imageName}`, clip: {x, y, width: w, height: h}})
 
             // captchaCode Pass
             let captchaCode
