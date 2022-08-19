@@ -58,7 +58,7 @@ exports.getCard = async (req, res, next) => {
 }
 
 exports.getAllCards = async (req, res, next) => {
-    const cards = await Card.find().sort("id")
+    const cards = await Card.find().sort({is_dispatched: -1}).sort({id: -1})
     if (!cards) {
         const error = new Error('Cards not found.')
         error.statusCode = 404
@@ -210,94 +210,208 @@ exports.getCardStatus = async (req, res) => {
 exports.getAllCardStatus = async (req, res) => {
     console.log("HITTING")
 
-    const cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(20);
+    const cards = await Card.find({
+        is_synced: 0,
+        is_dispatched: 0,
+        card_number: {$exists: true, $ne: ""}
+    }).sort("id").limit(20);
+
+    if (!cards) {
+        return res.status(404).json({
+            success: false,
+            message: "All cards up to date"
+        })
+    }
+
+    console.log("Loop Start")
+    let j = cards.length;
+    for (let i = 0; i < j; i++) {
+        console.log("In")
+            // const browser = await puppeteer.launch({headless: false})
+            const browser = await puppeteer.launch({
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                ],
+            })
+            const page = await browser.newPage()
+            await page.setViewport({width: 1200, height: 720})
+            await page.goto(process.env.SITE_URL, {
+                waitUntil: 'networkidle2'
+            })
+            // Entering card number
+            await page.type('#pannum', cards[i].card_number)
+            // Selecting year
+            await page.select('select[name="assessmentYear"]', '2022-2023')
+
+            await page.waitForSelector('#imgCode') // wait for the selector to load
+            const element = await page.$('#imgCode')
+            const box = await element.boundingBox()
+            const x = box.x // coordinate x
+            const y = box.y // coordinate y
+            const w = box.width // area width
+            const h = box.height
+
+            const imageName = cards[i].card_number + '-' + Date.now() + '.png'
+            await Card.findOneAndUpdate({card_number:  cards[i].card_number}, {captcha_image: imageName})
+
+            await page.screenshot({path: `public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+
+            // captchaCode Pass
+            let captchaCode
+            while (true) {
+                console.log('IN')
+                captchaCode = await Card.findOne({card_number:  cards[i].card_number})
+                //console.log("captchaCode", captchaCode)
+                if (captchaCode.captcha_code) {
+                    break
+                }
+            }
+            await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
+            await Card.findOneAndUpdate({card_number:  cards[i].card_number}, {captcha_code: '', captcha_image: ''})
+            console.log("captcha added")
+            console.log("captcha pass")
+
+            await page.click('.btn-info')
+            console.log("Form Submit")
+            // wait for 1 second
+            await page.waitForTimeout(1000)
+            console.log("New page")
+
+
+            const data = await page.evaluate(() => {
+                const tds = Array.from(document.querySelectorAll('table tr td'))
+                return tds.map(td => td.innerText)
+            });
+
+        //const links = await page.$$eval(".hyperlink", element => element.href);
+
+            let result = JSON.parse(JSON.stringify(data))
+            //console.log("resultresult", result)
+
+            const preCard = {
+                assessment_year: result[1],
+                mode_of_payment: result[2],
+                reference_number: result[3],
+                status: result[4] ? result[4] : "No records found",
+                account_number: result[5],
+                date: result[6],
+                is_synced: 1,
+                is_dispatched: result[4] && result[1] ? 1 : 0,
+            }
+            console.log("preCard", preCard)
+
+            const updatedCard = await Card.findOneAndUpdate({card_number:  cards[i].card_number}, preCard)
+            //console.log("result", updatedCard)
+            await browser.close();
+
+        console.log("Out")
+    }
+    console.log("Loop END")
+    return res.status(200).json({
+        success: true,
+        message: "Card Synced"
+    })
+}
+
+exports.getAllCardStatusNew = async (req, res) => {
+    let cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(20);
     if (!cards) {
         console.log('Cards not found')
     }
 
-    console.log("In")
-    await Promise.all(await cards.map(async (card) => {
-        console.log("1")
-        // const browser = await puppeteer.launch({headless: false})
-        const browser = await puppeteer.launch({
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-            ],
-        })
-        const page = await browser.newPage()
-        await page.setViewport({width: 1200, height: 720})
-        await page.goto(process.env.SITE_URL, {
-            waitUntil: 'networkidle2'
-        })
-        // Entering card number
-        await page.type('#pannum', card.card_number)
-        // Selecting year
-        await page.select('select[name="assessmentYear"]', '2022-2023')
+    async function wait(ms) { // comment 3
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
-        await page.waitForSelector('#imgCode') // wait for the selector to load
-        const element = await page.$('#imgCode')
-        const box = await element.boundingBox()
-        const x = box.x // coordinate x
-        const y = box.y // coordinate y
-        const w = box.width // area width
-        const h = box.height
+    async function doSomething() {
+        // comment 2
+        await wait(1000);
+        await cards.reduce(async (promise, card) => {
+            console.log("1")
+            // const browser = await puppeteer.launch({headless: false})
+            const browser = await puppeteer.launch({
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                ],
+            })
+            const page = await browser.newPage()
+            await page.setViewport({width: 1200, height: 720})
+            await page.goto(process.env.SITE_URL, {
+                waitUntil: 'networkidle2'
+            })
+            // Entering card number
+            await page.type('#pannum', card.card_number)
+            // Selecting year
+            await page.select('select[name="assessmentYear"]', '2022-2023')
 
-        const imageName = card.card_number + '-' + Date.now() + '.png'
-        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
+            await page.waitForSelector('#imgCode') // wait for the selector to load
+            const element = await page.$('#imgCode')
+            const box = await element.boundingBox()
+            const x = box.x // coordinate x
+            const y = box.y // coordinate y
+            const w = box.width // area width
+            const h = box.height
 
-        // wait for 1 second
-        await page.waitForTimeout(1000)
+            const imageName = card.card_number + '-' + Date.now() + '.png'
+            await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
 
-        await page.screenshot({path: `public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+            // wait for 1 second
+            await page.waitForTimeout(1000)
 
-        // captchaCode Pass
-        let captchaCode
-        while (true) {
-            console.log('IN')
-            captchaCode = await Card.findOne({card_number: card.card_number})
-            //console.log("captchaCode", captchaCode)
-            if (captchaCode.captcha_code) {
-                break
+            await page.screenshot({path: `public/images/${imageName}`, clip: {x, y, width: w, height: h}})
+
+            // captchaCode Pass
+            let captchaCode
+            while (true) {
+                console.log('IN')
+                captchaCode = await Card.findOne({card_number: card.card_number})
+                //console.log("captchaCode", captchaCode)
+                if (captchaCode.captcha_code) {
+                    break
+                }
             }
-        }
-        await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
-        await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '', captcha_image: ''})
-        console.log("captcha added")
-        console.log("captcha pass")
+            await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
+            await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '', captcha_image: ''})
+            console.log("captcha added")
+            console.log("captcha pass")
 
-        await Promise.all([
-            page.click('.btn-info'),
-            page.waitForNavigation({waitUntil: 'networkidle2'}),
-        ]);
-        console.log("Form Submit")
+            await page.click('.btn-info')
+            await page.waitForNavigation({waitUntil: 'networkidle2'})
 
-        const data = await page.evaluate(() => {
-            const tds = Array.from(document.querySelectorAll('table tr td'))
-            return tds.map(td => td.innerText)
-        });
+            console.log("Form Submit")
 
-        let result = JSON.parse(JSON.stringify(data))
-        //console.log("resultresult", result)
+            const data = await page.evaluate(() => {
+                const tds = Array.from(document.querySelectorAll('table tr td'))
+                return tds.map(td => td.innerText)
+            });
 
-        const preCard = {
-            assessment_year: result[1],
-            mode_of_payment: result[2],
-            reference_number: result[3],
-            status: result[4] ? result[4] : "No records found",
-            account_number: result[5],
-            date: result[6],
-            is_synced: 1,
-            is_dispatched: result[4] && result[1] ? 1 : 0,
-        }
-        console.log("preCard", preCard)
+            let result = JSON.parse(JSON.stringify(data))
+            //console.log("resultresult", result)
 
-        const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
-        //console.log("result", updatedCard)
-        await browser.close();
-    }))
+            const preCard = {
+                assessment_year: result[1],
+                mode_of_payment: result[2],
+                reference_number: result[3],
+                status: result[4] ? result[4] : "No records found",
+                account_number: result[5],
+                date: result[6],
+                is_synced: 1,
+                is_dispatched: result[4] && result[1] ? 1 : 0,
+            }
+            console.log("preCard", preCard)
 
-    console.log("Out")
+            const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
+            //console.log("result", updatedCard)
+            await browser.close();
+
+            // here we could await something else that is async like DB call
+            document.getElementById('results').append(`${card} `);
+        }, Promise.resolve()); // comment 1
+    }
+
+    setTimeout(() => doSomething(), 1000);
 
     res.redirect("/")
 }
@@ -336,1228 +450,3436 @@ exports.addUserDataFromJson = async (req, res) => {
     try {
         let userData = [
             {
-                "id": "1",
-                "name": "RAMABEN RAJESHBHAI CHOVATIYA",
-                "card_number": "AQMPC7370D",
-                "bill_amount": "755200",
-                "tds_rate": "10",
-                "tds_amount": "75520",
-                "group": "NANDAN"
+                "id": 1,
+                "name": "KEVAL BHARATBHAI DAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DJLPD7670A",
+                "total_amount": 95000
             },
             {
-                "id": "2",
-                "name": "GHANSHYAMBHAI DHARAMSHIBHAI KUKADIYA",
-                "card_number": "AFXPK3818C",
-                "bill_amount": "730100",
-                "tds_rate": "10",
-                "tds_amount": "73010",
-                "group": "NANDAN"
+                "id": 2,
+                "name": "DHAVAL NARESHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BBBPN5666G",
+                "total_amount": 95000
             },
             {
-                "id": "3",
-                "name": "VASANTBEN GHANSHYAMBHAI KUKADIYA",
-                "card_number": "GWHPK7060K",
-                "bill_amount": "550100",
-                "tds_rate": "2",
-                "tds_amount": "11002",
-                "group": "NANDAN"
+                "id": 3,
+                "name": "DINESHBHAI VALLABHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ARFPN22579Q",
+                "total_amount": 95000
             },
             {
-                "id": "4",
-                "name": "SURBHI VIVEK GODHANI",
-                "card_number": "BXDPV4558B",
-                "bill_amount": "475200",
-                "tds_rate": "10",
-                "tds_amount": "47520",
-                "group": "ASHISH"
+                "id": 4,
+                "name": "BHAVNABEN JAGDISHBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BCJPV1097C",
+                "total_amount": 95000
             },
             {
-                "id": "5",
-                "name": "BHAVIN NITINBHAI NAVADIYA",
-                "card_number": "CBCPN5753J",
-                "bill_amount": "570800",
-                "tds_rate": "10",
-                "tds_amount": "57080",
-                "group": "ASHISH"
+                "id": 5,
+                "name": "SUNITABEN RADADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DAAPR7835H",
+                "total_amount": 95000
             },
             {
-                "id": "6",
-                "name": "RAJESHBHAI VALLABHBHAI NAVADIYA",
-                "card_number": "BFBPN2571Q",
-                "bill_amount": "510900",
-                "tds_rate": "2",
-                "tds_amount": "10218",
-                "group": "ASHISH"
+                "id": 6,
+                "name": "MILAN JAYSUKHBHAI RADADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BXCPR7485L",
+                "total_amount": 95000
             },
             {
-                "id": "7",
-                "name": "MAMTABEN RAJUBHAI NAVADIYA",
-                "card_number": "BZZPN8791A",
-                "bill_amount": "455300",
-                "tds_rate": "1",
-                "tds_amount": "4553",
-                "group": "ASHISH"
+                "id": 7,
+                "name": "ASHISH SITAPARA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DAPPS1404A",
+                "total_amount": 95000
             },
             {
-                "id": "8",
-                "name": "DHAVAL VIRANI",
-                "card_number": "BTVPV8369L",
-                "bill_amount": "560100",
-                "tds_rate": "10",
-                "tds_amount": "56010",
-                "group": "ASHISH"
+                "id": 8,
+                "name": "PRAGNABEN KARKAR",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "JPNPK4498M",
+                "total_amount": 95000
             },
             {
-                "id": "9",
-                "name": "PIYUSH VINUBHAI ANGHAN",
-                "card_number": "DDDPA0491N",
-                "bill_amount": "490900",
-                "tds_rate": "10",
-                "tds_amount": "49090",
-                "group": "ASHISH"
+                "id": 9,
+                "name": "MAMTABEN MANGUKIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BMWPM2428K",
+                "total_amount": 95000
             },
             {
-                "id": "10",
-                "name": "ASHOKBHAI DEVJIBHAI ANGHAN",
-                "card_number": "BYKPA0835J",
-                "bill_amount": "595300",
-                "tds_rate": "2",
-                "tds_amount": "11906",
-                "group": "ASHISH"
+                "id": 10,
+                "name": "NARENDRABHAI BHIMANI",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BANPB2401E",
+                "total_amount": 95000
             },
             {
-                "id": "11",
-                "name": "JIGNESH VINUBHAI ANGHAN",
-                "card_number": "BNZPA6796A",
-                "bill_amount": "580400",
-                "tds_rate": "1",
-                "tds_amount": "5804",
-                "group": "ASHISH"
+                "id": 11,
+                "name": "CHANDUBHAI KASWALA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AUCPK8006E",
+                "total_amount": 95000
             },
             {
-                "id": "12",
-                "name": "USHABEN DINESHBHAI NAVADIYA",
-                "card_number": "AWVPN6017H",
-                "bill_amount": "485300",
-                "tds_rate": "10",
-                "tds_amount": "48530",
-                "group": "ASHISH"
+                "id": 12,
+                "name": "JAYESH PATIL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CPTPP5534E",
+                "total_amount": 95000
             },
             {
-                "id": "13",
-                "name": "NITINBHAI VALLABHBHAI NAVADIYA",
-                "card_number": "BORPN2943H",
-                "bill_amount": "389900",
-                "tds_rate": "2",
-                "tds_amount": "7798",
-                "group": "ASHISH"
+                "id": 13,
+                "name": "KRISHNA SITAPARA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "NIJPS3419F",
+                "total_amount": 45000
             },
             {
-                "id": "14",
-                "name": "SAGAR NARESHBHAI NAVADIYA",
-                "card_number": "BNQPN0409Q",
-                "bill_amount": "555600",
-                "tds_rate": "1",
-                "tds_amount": "5556",
-                "group": "ASHISH"
+                "id": 14,
+                "name": "JAGRUTIBEN DHAMELIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BOPPD4287L",
+                "total_amount": 95000
             },
             {
-                "id": "15",
-                "name": "PIYUSH DHANJIBHAI VIRANI",
-                "card_number": "AUSPV4099A",
-                "bill_amount": "490900",
-                "tds_rate": "2",
-                "tds_amount": "9818",
-                "group": "ASHISH"
+                "id": 15,
+                "name": "ZEEL MUKESHBHAI LATHIDADIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BHXPL7838J",
+                "total_amount": 95000
             },
             {
-                "id": "16",
-                "name": "REKHABEN BHOLABHAI GODHANI",
-                "card_number": "CMQPG0604L",
-                "bill_amount": "535300",
-                "tds_rate": "10",
-                "tds_amount": "53530",
-                "group": "ASHISH"
+                "id": 16,
+                "name": "PRAFULBHAI UNADKAT",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AEIPU1546H",
+                "total_amount": 95000
             },
             {
-                "id": "17",
-                "name": "VIVEK PRAFULCHANDRA UNADKAT",
-                "card_number": "AEIPU1545E",
-                "bill_amount": "530200",
-                "tds_rate": "10",
-                "tds_amount": "53020",
-                "group": "NANDAN"
+                "id": 17,
+                "name": "HARSHABEN MUKESHBHAI ZALAVADIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ABAPZ2761L",
+                "total_amount": 95000
             },
             {
-                "id": "18",
-                "name": "BHARATBHAI DHARAMSHIBHAI SAKDASARIYA",
-                "card_number": "ETIPS9012M",
-                "bill_amount": "390300",
-                "tds_rate": "10",
-                "tds_amount": "39030",
-                "group": "ANIKET"
+                "id": 18,
+                "name": "VIVEK BHOLABHAI GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BEPPG4401P",
+                "total_amount": 95000
             },
             {
-                "id": "19",
-                "name": "NITINBHAI NANUBHAI VAGHANI",
-                "card_number": "APGPV8892Q",
-                "bill_amount": "510500",
-                "tds_rate": "10",
-                "tds_amount": "51050",
-                "group": "ANIKET"
+                "id": 19,
+                "name": "NITABEN NARESHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BWCPN4525L",
+                "total_amount": 95000
             },
             {
-                "id": "20",
-                "name": "SANKET KANJIBHAI CHABHADIYA",
-                "card_number": "AVHPC6393A",
-                "bill_amount": "515300",
-                "tds_rate": "10",
-                "tds_amount": "51530",
-                "group": "ANIKET"
+                "id": 20,
+                "name": "PALLAVIBEN CHOVATIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AQMPC7371C",
+                "total_amount": 95000
             },
             {
-                "id": "21",
-                "name": "VIRAM RAMJIBHAI ITALIYA",
-                "card_number": "ACYPI8295H",
-                "bill_amount": "425700",
-                "tds_rate": "10",
-                "tds_amount": "42570",
-                "group": "ANIKET"
+                "id": 21,
+                "name": "BHAVESH GAJERA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ANPPG7227F",
+                "total_amount": 95000
             },
             {
-                "id": "22",
-                "name": "MITTALBEN BHARATBHAI SAKDASARIYA",
-                "card_number": "IWNPS1876K",
-                "bill_amount": "740200",
-                "tds_rate": "2",
-                "tds_amount": "14804",
-                "group": "ANIKET"
+                "id": 22,
+                "name": "JITENDRA VAJA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AJUPV0470E",
+                "total_amount": 95000
             },
             {
-                "id": "23",
-                "name": "BHARATIBEN BHARATBHAI SAKDASARIYA",
-                "card_number": "JWNPS1777Q",
-                "bill_amount": "490600",
-                "tds_rate": "1",
-                "tds_amount": "4906",
-                "group": "ANIKET"
+                "id": 23,
+                "name": "MONTU PATEL",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "EQHPP7743C",
+                "total_amount": 45000
             },
             {
-                "id": "24",
-                "name": "BANSIBEN MAULIKBHAI SHANKAR",
-                "card_number": "ERSPK3676R",
-                "bill_amount": "555200",
-                "tds_rate": "1",
-                "tds_amount": "5552",
-                "group": "AKASH"
+                "id": 24,
+                "name": "SONALBEN AKASHKUMAR KHUNT",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EMXPK8272F",
+                "total_amount": 95000
             },
             {
-                "id": "25",
-                "name": "PIYUSHKUMAR DINESHBHAI SUHAGIYA",
-                "card_number": "GIKPS4452L",
-                "bill_amount": "490100",
-                "tds_rate": "10",
-                "tds_amount": "49010",
-                "group": "NIRMAL"
+                "id": 25,
+                "name": "SHOBHABEN GAJERA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CADPG7259N",
+                "total_amount": 95000
             },
             {
-                "id": "26",
-                "name": "SONALBEN CHANDRESHBHAI PARMAR",
-                "card_number": "CWJPP4338P",
-                "bill_amount": "530500",
-                "tds_rate": "2",
-                "tds_amount": "10610",
-                "group": "NIRMAL"
+                "id": 26,
+                "name": "ASHISH NITINBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BDTPN8588H",
+                "total_amount": 95000
             },
             {
-                "id": "27",
-                "name": "DAYABEN MUKESHBHAI KORAT",
-                "card_number": "BMRPK6899K",
-                "bill_amount": "480800",
-                "tds_rate": "10",
-                "tds_amount": "48080",
-                "group": "NIRMAL"
+                "id": 27,
+                "name": "AVADH DINESHBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BHKPV3545F",
+                "total_amount": 95000
             },
             {
-                "id": "28",
-                "name": "NIMESH JAYESHBHAI DUDHAT",
-                "card_number": "CDOPD8631H",
-                "bill_amount": "560400",
-                "tds_rate": "2",
-                "tds_amount": "11208",
-                "group": "NIRMAL"
+                "id": 28,
+                "name": "BHARATBHAI UKABHAI DAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AOMPD0197F",
+                "total_amount": 95000
             },
             {
-                "id": "29",
-                "name": "BHOOMIBEN BATUKBHAI SAVAJ",
-                "card_number": "IHOPS3854R",
-                "bill_amount": "540300",
-                "tds_rate": "5",
-                "tds_amount": "27015",
-                "group": "NIRMAL"
+                "id": 29,
+                "name": "BHARGAV YOGESHBHAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DKXPP6944N",
+                "total_amount": 95000
             },
             {
-                "id": "30",
-                "name": "BHAVNABEN BATUKBHAI SAVAJ",
-                "card_number": "HQQPS4519M",
-                "bill_amount": "550700",
-                "tds_rate": "10",
-                "tds_amount": "55070",
-                "group": "NIRMAL"
+                "id": 30,
+                "name": "DINESHBHAI RUDABHAI SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HIYPS7290R",
+                "total_amount": 95000
             },
             {
-                "id": "31",
-                "name": "VEKARIYA DEVANGI VIPULBHAI",
-                "card_number": "CCCPV6161M",
-                "bill_amount": "445900",
-                "tds_rate": "2",
-                "tds_amount": "8918",
-                "group": "NIRMAL"
+                "id": 31,
+                "name": "HARDIK DINESHBHAI SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HIYPS7233C",
+                "total_amount": 95000
             },
             {
-                "id": "32",
-                "name": "VIPULBHAI MANUBHAI PATEL",
-                "card_number": "AQIPP8500A",
-                "bill_amount": "498000",
-                "tds_rate": "5",
-                "tds_amount": "24900",
-                "group": "NIRMAL"
+                "id": 32,
+                "name": "HARESHBHAI GOVINDBHAI VANANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "BCVPV1893E",
+                "total_amount": 45000
             },
             {
-                "id": "33",
-                "name": "VEKARIYA URMILABEN VIPULBHAI",
-                "card_number": "AVSPV5410G",
-                "bill_amount": "528500",
-                "tds_rate": "10",
-                "tds_amount": "52850",
-                "group": "NIRMAL"
+                "id": 33,
+                "name": "KAJOL PRAKASHBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQPPG5468J",
+                "total_amount": 95000
             },
             {
-                "id": "34",
-                "name": "SHREYANSH NATUBHAI DEVANI",
-                "card_number": "BYYPD4163N",
-                "bill_amount": "532700",
-                "tds_rate": "10",
-                "tds_amount": "53270",
-                "group": "NIRMAL"
+                "id": 34,
+                "name": "KAKADIYA LALJIBHAI PRAVINBHAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BOHPK9314R",
+                "total_amount": 95000
             },
             {
-                "id": "35",
-                "name": "ZALAVADIYA BHUMIKA MUKESHBHAI",
-                "card_number": "ADPPZ5253N",
-                "bill_amount": "496800",
-                "tds_rate": "5",
-                "tds_amount": "24840",
-                "group": "NIRMAL"
+                "id": 35,
+                "name": "KEVIN ASHOKBHAI LATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DZSPA7247F",
+                "total_amount": 95000
             },
             {
-                "id": "36",
-                "name": "KHOKAR HITESH RAMESHBHAI",
-                "card_number": "ERMPK0324L",
-                "bill_amount": "536200",
-                "tds_rate": "1",
-                "tds_amount": "5362",
-                "group": "NIMESH"
+                "id": 36,
+                "name": "KIRANBEN HARESHBHAI VANANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "AVXPV8723F",
+                "total_amount": 45000
             },
             {
-                "id": "37",
-                "name": "MUKESH THANAJI RAWAL",
-                "card_number": "AZEPR1884Q",
-                "bill_amount": "550200",
-                "tds_rate": "1",
-                "tds_amount": "5502",
-                "group": "NIMESH"
+                "id": 37,
+                "name": "MONIKA PRAVINBHAI KAKADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GLJPP2786N",
+                "total_amount": 95000
             },
             {
-                "id": "38",
-                "name": "KEYURKUMAR BHAVINBHAI LAKHANI",
-                "card_number": "BHMPL2708J",
-                "bill_amount": "498300",
-                "tds_rate": "1",
-                "tds_amount": "4983",
-                "group": "NIMESH"
+                "id": 38,
+                "name": "NAKRANI HITESHBHAI PARSHOTTAMBHAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AFJPN5031J",
+                "total_amount": 95000
             },
             {
-                "id": "39",
-                "name": "KULDEEPSINH RATHOD",
-                "card_number": "BPPPG0169B",
-                "bill_amount": "530100",
-                "tds_rate": "1",
-                "tds_amount": "5301",
-                "group": "ANIKET"
+                "id": 39,
+                "name": "PARESHBHAI MUKESHBHAI CHAVDA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BTTPC5679J",
+                "total_amount": 95000
             },
             {
-                "id": "40",
-                "name": "LAKHAN KUMAR",
-                "card_number": "FRDPK7894D",
-                "bill_amount": "560600",
-                "tds_rate": "1",
-                "tds_amount": "5606",
-                "group": "ANIKET"
+                "id": 40,
+                "name": "SONANI JITENDRABHAI VALLABHBHAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "LCUPS0406H",
+                "total_amount": 95000
             },
             {
-                "id": "41",
-                "name": "PUSHPRAJ KUMAR",
-                "card_number": "INWPK7633E",
-                "bill_amount": "525000",
-                "tds_rate": "1",
-                "tds_amount": "5250",
-                "group": "ANIKET"
+                "id": 41,
+                "name": "URMIL PRAKASHBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQPPG5469K",
+                "total_amount": 95000
             },
             {
-                "id": "42",
-                "name": "SHITALBA KULDEEPSINH RATHOD",
-                "card_number": "DPVPG5964N",
-                "bill_amount": "495100",
-                "tds_rate": "1",
-                "tds_amount": "4951",
-                "group": "ANIKET"
+                "id": 42,
+                "name": "VISHAL PRAVINBHAI KAKADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DVOPK6434A",
+                "total_amount": 95000
             },
             {
-                "id": "43",
-                "name": "NARAYAN MAHATO",
-                "card_number": "DKEPM1721H",
-                "bill_amount": "530800",
-                "tds_rate": "1",
-                "tds_amount": "5308",
-                "group": "ANIKET"
+                "id": 43,
+                "name": "BATUKBHAI SAVAJ",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AQEPS4813P",
+                "total_amount": 95000
             },
             {
-                "id": "44",
-                "name": "SUNITA DANBAHADUR BISTA",
-                "card_number": "FXTPB8635P",
-                "bill_amount": "520700",
-                "tds_rate": "1",
-                "tds_amount": "5207",
-                "group": "ANIKET"
+                "id": 44,
+                "name": "ALKABEN KAMLESHBHAI RUPARELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BRTPR0099F",
+                "total_amount": 95000
             },
             {
-                "id": "45",
-                "name": "NIMESH PRAGJIBHAI DIYORA",
-                "card_number": "DWUPD1233B",
-                "bill_amount": "536900",
-                "tds_rate": "2",
-                "tds_amount": "10738",
-                "group": "NIMESH"
+                "id": 45,
+                "name": "DILIPBHAI TEJABHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AJVPV8547P",
+                "total_amount": 95000
             },
             {
-                "id": "46",
-                "name": "AXIT DINESHBHAI PAVASIYA",
-                "card_number": "DTIPP6086H",
-                "bill_amount": "545500",
-                "tds_rate": "2",
-                "tds_amount": "10910",
-                "group": "NIMESH"
+                "id": 46,
+                "name": "DINESHBHAI SAVJIBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ASXPV0409P",
+                "total_amount": 95000
             },
             {
-                "id": "47",
-                "name": "KHEMRAJ KUMAR",
-                "card_number": "GNLPK3734H",
-                "bill_amount": "522300",
-                "tds_rate": "1",
-                "tds_amount": "5223",
-                "group": "ANIKET"
+                "id": 47,
+                "name": "GHANSHYAM TEJABHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AGIPV8825E",
+                "total_amount": 95000
             },
             {
-                "id": "48",
-                "name": "NILESHBHAI MANSUKHBHAI DEVANI",
-                "card_number": "AKKPD0573B",
-                "bill_amount": "510600",
-                "tds_rate": "5",
-                "tds_amount": "25530",
-                "group": "NIRMAL"
+                "id": 48,
+                "name": "ILABEN HIRPARA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AOWPH4696F",
+                "total_amount": 95000
             },
             {
-                "id": "49",
-                "name": "KHASIYA AVINASH MAHESHBHAI",
-                "card_number": "KYBPK9167K",
-                "bill_amount": "480700",
-                "tds_rate": "5",
-                "tds_amount": "24035",
-                "group": "JOYAN"
+                "id": 49,
+                "name": "KAMLESHBHAI BHANUBHAI RUPARELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AXKPP6952F",
+                "total_amount": 95000
             },
             {
-                "id": "50",
-                "name": "NATUBHAI DAYABHAI DEVANI",
-                "card_number": "BMYPD3242C",
-                "bill_amount": "575900",
-                "tds_rate": "2",
-                "tds_amount": "11518",
-                "group": "NIRMAL"
+                "id": 50,
+                "name": "MAYUR DILIPBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AUHPV6717G",
+                "total_amount": 95000
             },
             {
-                "id": "51",
-                "name": "PARESH PANSARA",
-                "card_number": "BPAPP5831A",
-                "bill_amount": "540300",
-                "tds_rate": "10",
-                "tds_amount": "54030",
-                "group": "NIRMAL"
+                "id": 51,
+                "name": "UMESHBHAI BHANUBHAI RUPARELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BYIPR7011R",
+                "total_amount": 95000
             },
             {
-                "id": "52",
-                "name": "CHAVADA SATYAM MANSUKHBHAI",
-                "card_number": "BZCPC0814J",
-                "bill_amount": "498500",
-                "tds_rate": "5",
-                "tds_amount": "24925",
-                "group": "DHARMIK"
+                "id": 52,
+                "name": "BHAVIN HARESHBHAI KALATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BFIPH6172Q",
+                "total_amount": 95000
             },
             {
-                "id": "53",
-                "name": "THUMMAR JENISH KANAKBHAI",
-                "card_number": "CEIPT2746A",
-                "bill_amount": "565400",
-                "tds_rate": "2",
-                "tds_amount": "11308",
-                "group": "RAJUBHAI"
+                "id": 53,
+                "name": "CHIRAG GHANSHYAMBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CVWPG7175D",
+                "total_amount": 95000
             },
             {
-                "id": "54",
-                "name": "BHARATBHAI MANILAL KHANPARA HUF",
-                "card_number": "AAKHB2895L",
-                "bill_amount": "510500",
-                "tds_rate": "2",
-                "tds_amount": "10210",
-                "group": "AKASH"
+                "id": 54,
+                "name": "PANKAJBHAI MAVJIBHAI DAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "AUDPD3727G",
+                "total_amount": 45000
             },
             {
-                "id": "55",
-                "name": "KHUNT URVASHI BHAVIK",
-                "card_number": "LSVPK7198D",
-                "bill_amount": "535700",
-                "tds_rate": "10",
-                "tds_amount": "53570",
-                "group": "NANDAN"
+                "id": 55,
+                "name": "SONALBEN VIJAYBHAI SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "AQPPL2865B",
+                "total_amount": 45000
             },
             {
-                "id": "56",
-                "name": "KATHIRIYA TARANG RAMESHBHAI",
-                "card_number": "EYFPR9485D",
-                "bill_amount": "545900",
-                "tds_rate": "5",
-                "tds_amount": "27295",
-                "group": "DHARMIK"
+                "id": 56,
+                "name": "VIJAYBHAI GOPALBHAI SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EQRPS3460P",
+                "total_amount": 95000
             },
             {
-                "id": "57",
-                "name": "ARVINBHAI MOHANBHAI MORADIYA",
-                "card_number": "DPZPM4636B",
-                "bill_amount": "625000",
-                "tds_rate": "1",
-                "tds_amount": "6250",
-                "group": "ASHISH"
+                "id": 57,
+                "name": "ANJULABEN PANKAJBHAI DHAMELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CEHPD2678Q",
+                "total_amount": 95000
             },
             {
-                "id": "58",
-                "name": "DABHI CHANDUBHAI PANCHABHAI",
+                "id": 58,
+                "name": "GHANSHYAMBHAI KARMASIBHAI MANIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AOUPM7461B",
+                "total_amount": 95000
+            },
+            {
+                "id": 59,
+                "name": "MITUL GHANSHYAMBHAI SHIHORA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FVSPS4714K",
+                "total_amount": 95000
+            },
+            {
+                "id": 60,
+                "name": "NISHA CHIRAGBHAI JADVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CIGPJ7091E",
+                "total_amount": 95000
+            },
+            {
+                "id": 61,
+                "name": "PANKAJBHAI MANUBHAI DHAMELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AMTPD1711G",
+                "total_amount": 95000
+            },
+            {
+                "id": 62,
+                "name": "PIYUSH GHANSHYAMBHAI SHIHORA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FWKPS5443A",
+                "total_amount": 95000
+            },
+            {
+                "id": 63,
+                "name": "PRAVINBHAI JIVRAJBHAI MORADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BVEPM2322K",
+                "total_amount": 95000
+            },
+            {
+                "id": 64,
+                "name": "URVASHI BHAUTIKBHAI SHIHORA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "MMWPS3103G",
+                "total_amount": 95000
+            },
+            {
+                "id": 65,
+                "name": "ARUNABEN VALLABHBHAI SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "LIAPS7186N",
+                "total_amount": 95000
+            },
+            {
+                "id": 66,
+                "name": "ASHISH DALSUKHBHAI LASHKRI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AIIPL6371K",
+                "total_amount": 95000
+            },
+            {
+                "id": 67,
+                "name": "GEETABEN DILIPBHAI MORADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CZHPM2071D",
+                "total_amount": 95000
+            },
+            {
+                "id": 68,
+                "name": "KETANBHAI DULABHAI HADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ARLPH1261N",
+                "total_amount": 95000
+            },
+            {
+                "id": 69,
+                "name": "MADHAVIBEN MANSUKHBHAI GADHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 70,
+                "name": "MITAL BALAVANTBHAI BARAVALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DKLPB4281C",
+                "total_amount": 95000
+            },
+            {
+                "id": 71,
+                "name": "NATVARLAL BABUBHAI GONDALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ATIPG9472H",
+                "total_amount": 95000
+            },
+            {
+                "id": 72,
+                "name": "RAHUL KANUBHAI SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CZXPS1481D",
+                "total_amount": 95000
+            },
+            {
+                "id": 73,
+                "name": "SEJALBEN ASHISHBHAI LASHKARI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BDSPL0619J",
+                "total_amount": 95000
+            },
+            {
+                "id": 74,
+                "name": "SHOBHANABEN DAYABHAI DHAMELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CVMPD2786D",
+                "total_amount": 95000
+            },
+            {
+                "id": 75,
+                "name": "URVISH VITHALBHAI LATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AOSPL4689L",
+                "total_amount": 95000
+            },
+            {
+                "id": 76,
+                "name": "VAIBHAV YOGESHBHAI PURANVAIRAGI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FKRPP7435Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 77,
+                "name": "SHOBHANABEN BALAVANTBHAI BARAVALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CLPPB9353P",
+                "total_amount": 95000
+            },
+            {
+                "id": 78,
+                "name": "ASHABEN SURESHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AMLPN2751Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 79,
+                "name": "CHIRAGKUMAR SURESHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "APGPN1099B",
+                "total_amount": 95000
+            },
+            {
+                "id": 80,
+                "name": "DINESHBHAI JIVRAJBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "ATTPN5385R",
+                "total_amount": 45000
+            },
+            {
+                "id": 81,
+                "name": "NILAMBEN GAUTAMBHAI ANGHAN",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BEBPD4397H",
+                "total_amount": 95000
+            },
+            {
+                "id": 82,
+                "name": "PAYALBEN RAHULBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BFRPN0174B",
+                "total_amount": 95000
+            },
+            {
+                "id": 83,
+                "name": "RAHUL VINUBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "APIPN9042A",
+                "total_amount": 95000
+            },
+            {
+                "id": 84,
+                "name": "SEJALBEN ASHOKBHAI RADADIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BTWPR5847L",
+                "total_amount": 95000
+            },
+            {
+                "id": 85,
+                "name": "JITUBEN R RADADIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BZOPR8719M",
+                "total_amount": 95000
+            },
+            {
+                "id": 86,
+                "name": "KANJI D VAGHASIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ALMPV0034A",
+                "total_amount": 95000
+            },
+            {
+                "id": 87,
+                "name": "MITIKSHA PARESHBHAI GOTI",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DSVPG3022C",
+                "total_amount": 95000
+            },
+            {
+                "id": 88,
+                "name": "BHAVANABEN NIPULBHAI VAGHELA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQAPV4432Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 89,
+                "name": "NIPUL MAGANBHAI VAGHELA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AFKPV8591G",
+                "total_amount": 95000
+            },
+            {
+                "id": 90,
+                "name": "JIGNESHBHAI HARESHBHAI SONDAGAR",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "NYIPS9244B",
+                "total_amount": 95000
+            },
+            {
+                "id": 91,
+                "name": "ASHABEN DHARMESHBHAI VAGHELA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GKJPD3372M",
+                "total_amount": 95000
+            },
+            {
+                "id": 92,
+                "name": "ASHABEN ASHOKBHAI LATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ATAPL3647H",
+                "total_amount": 95000
+            },
+            {
+                "id": 93,
+                "name": "ASMITABEN MUKESHBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DUBPG1956F",
+                "total_amount": 95000
+            },
+            {
+                "id": 94,
+                "name": "BHARGAV PRAVINBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CMFPN9154F",
+                "total_amount": 95000
+            },
+            {
+                "id": 95,
+                "name": "DAYABEN VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AXFPV0062M",
+                "total_amount": 95000
+            },
+            {
+                "id": 96,
+                "name": "DHARMISHTHABEN GHORI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DTLPG7230R",
+                "total_amount": 95000
+            },
+            {
+                "id": 97,
+                "name": "GAUTAM RAVJIBHAI ANGHAN",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BEKPA4567D",
+                "total_amount": 95000
+            },
+            {
+                "id": 98,
+                "name": "GEETABEN SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CFEPS4023J",
+                "total_amount": 95000
+            },
+            {
+                "id": 99,
+                "name": "GHANSHYAMBHAI VAJUBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AVVPG3314M",
+                "total_amount": 95000
+            },
+            {
+                "id": 100,
+                "name": "GOPI SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "PCZPS3405P",
+                "total_amount": 95000
+            },
+            {
+                "id": 101,
+                "name": "JAGDISHBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BHUPV3039C",
+                "total_amount": 95000
+            },
+            {
+                "id": 102,
+                "name": "JINAL VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BWAPV4716M",
+                "total_amount": 95000
+            },
+            {
+                "id": 103,
+                "name": "KEVAL SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HHPPS4594N",
+                "total_amount": 95000
+            },
+            {
+                "id": 104,
+                "name": "KINJAL VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQBPV1746C",
+                "total_amount": 95000
+            },
+            {
+                "id": 105,
+                "name": "KIRITBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AXFPV0483N",
+                "total_amount": 95000
+            },
+            {
+                "id": 106,
+                "name": "MANISHABEN MUKESHBHAI ANGHAN",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CLZPA9436N",
+                "total_amount": 95000
+            },
+            {
+                "id": 107,
+                "name": "MANJULABEN VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ASXPV0373J",
+                "total_amount": 95000
+            },
+            {
+                "id": 108,
+                "name": "MEERABEN GHANSHYAMBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DFRPG7701B",
+                "total_amount": 95000
+            },
+            {
+                "id": 109,
+                "name": "MILAN MANOJBHAI TEJANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BSPPT0724E",
+                "total_amount": 95000
+            },
+            {
+                "id": 110,
+                "name": "MUKESHBHAI VAJUBHAI GORASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AVVPG3313N",
+                "total_amount": 95000
+            },
+            {
+                "id": 111,
+                "name": "NAMRATA UMANGBHAI ITALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AMUPI7854E",
+                "total_amount": 95000
+            },
+            {
+                "id": 112,
+                "name": "NITABEN BHALANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQYPB8021M",
+                "total_amount": 95000
+            },
+            {
+                "id": 113,
+                "name": "RADHIKA SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "MFNPS2356R",
+                "total_amount": 95000
+            },
+            {
+                "id": 114,
+                "name": "RAMNIKBHAI BHALANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQYPB8023K",
+                "total_amount": 95000
+            },
+            {
+                "id": 115,
+                "name": "RIDDHI SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "PCZPS3469D",
+                "total_amount": 95000
+            },
+            {
+                "id": 116,
+                "name": "SAGAR KHER ",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GAEPK8434E",
+                "total_amount": 95000
+            },
+            {
+                "id": 117,
+                "name": "SAVITABEN SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "LJDPS5348L",
+                "total_amount": 95000
+            },
+            {
+                "id": 118,
+                "name": "SEJAL GOHIL",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "MYFPS1245C",
+                "total_amount": 95000
+            },
+            {
+                "id": 119,
+                "name": "SHAILESHBHAI GOHIL",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CCWPG4540B",
+                "total_amount": 95000
+            },
+            {
+                "id": 120,
+                "name": "VARSHABEN BHARATBHAI DAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ATHPD8542L",
+                "total_amount": 95000
+            },
+            {
+                "id": 121,
+                "name": "VASANTBEN KYADA ",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "JDDPK0250H",
+                "total_amount": 95000
+            },
+            {
+                "id": 122,
+                "name": "VIKAS MAKWANA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CDQPM0068K",
+                "total_amount": 95000
+            },
+            {
+                "id": 123,
+                "name": "VISHAL BHALANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AWBPB6631M",
+                "total_amount": 95000
+            },
+            {
+                "id": 124,
+                "name": "VISHAL HARESHBHAI KALATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "ETLPK2608J",
+                "total_amount": 45000
+            },
+            {
+                "id": 125,
+                "name": "YOGESH MANSUKHBHAI CHBHADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HVEPS5100M",
+                "total_amount": 95000
+            },
+            {
+                "id": 126,
+                "name": "BHAVESHBHAI NARANBHAI BELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BDNPB0089D",
+                "total_amount": 95000
+            },
+            {
+                "id": 127,
+                "name": "REKHABEN VIMALBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BSNPN6784J",
+                "total_amount": 95000
+            },
+            {
+                "id": 128,
+                "name": "SURESHBHAI CHAGANBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AGZPN7915Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 129,
+                "name": "UMANG ITALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AAYPI1534R",
+                "total_amount": 95000
+            },
+            {
+                "id": 130,
+                "name": "VIKRAM CHAVDA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BXIPC2382K",
+                "total_amount": 95000
+            },
+            {
+                "id": 131,
+                "name": "ANITABEN GHANSHYAMBHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AJVPV8548C",
+                "total_amount": 95000
+            },
+            {
+                "id": 132,
+                "name": "DAKSHABEN DHRANA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HCVPD6537F",
+                "total_amount": 95000
+            },
+            {
+                "id": 133,
+                "name": "GORIBEN MUKESHBHAI DESAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HGLPD3121H",
+                "total_amount": 95000
+            },
+            {
+                "id": 134,
+                "name": "MUKESHBHAI KESHUBHAI DESAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CVDPD6552L",
+                "total_amount": 95000
+            },
+            {
+                "id": 135,
+                "name": "RAJUBHAI KESHUBHAI DESAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GGHPD7479H",
+                "total_amount": 95000
+            },
+            {
+                "id": 136,
+                "name": "RUPAL JIGNESHBHAI KOTHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "IQDPK3761F",
+                "total_amount": 95000
+            },
+            {
+                "id": 137,
+                "name": "SANTABEN DHRANA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HNQPD4352E",
+                "total_amount": 95000
+            },
+            {
+                "id": 138,
+                "name": "HARDIK JALODRA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 139,
+                "name": "ATULBHAI BABUBHAI BORAD",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 140,
+                "name": "DHIRUBHAI RUDABHAI SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 141,
+                "name": "GAUTAM SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GYRPS4253N",
+                "total_amount": 95000
+            },
+            {
+                "id": 142,
+                "name": "HARDIK SORATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 143,
+                "name": "JAYSHREE DINESHBHAI BORAD",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 144,
+                "name": "NARESHKUMAR B TADHANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 145,
+                "name": "PARAS SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 146,
+                "name": "RAVINABEN PRAVINBHAI KAKADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 147,
+                "name": "SHRADBHAI SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 148,
+                "name": "SONAM VISHAL BHALANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 149,
+                "name": "DARSHAN JAGDISHBHAI DAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EKUPD9034B",
+                "total_amount": 95000
+            },
+            {
+                "id": 150,
+                "name": "MAYUR VITTHALBHAI SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "IETPS4477G",
+                "total_amount": 95000
+            },
+            {
+                "id": 151,
+                "name": "UMESH MOHANBHAI DUNGARANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CSLPD2346D",
+                "total_amount": 95000
+            },
+            {
+                "id": 152,
+                "name": "BHAVNABEN G CHABHADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 153,
+                "name": "GHANSHYAMBHAI CHABHADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 154,
+                "name": "PARTH JETANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 155,
+                "name": "PIYUSH CHABHADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 156,
+                "name": "SHILPABEN JETANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 157,
+                "name": "ABHISHEK LATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 158,
+                "name": "REKHABEN HASHMUKHBHAI LATHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
+            },
+            {
+                "id": 159,
+                "name": "USHABEN NITINBHAI RADADIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BZOPR9185F",
+                "total_amount": 95000
+            },
+            {
+                "id": 160,
+                "name": "AKSHITA RAMESHBHAI RADADIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DRQPR0914G",
+                "total_amount": 95000
+            },
+            {
+                "id": 161,
+                "name": "JAYSHRIBEN JADAVBHAI SONANI",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "KIYPS3206J",
+                "total_amount": 95000
+            },
+            {
+                "id": 162,
+                "name": "PRADIPBHAI BHIMJIBHAI VAVDIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AQXPV0736F",
+                "total_amount": 95000
+            },
+            {
+                "id": 163,
+                "name": "RIDDHI CHIMANBHAI SONDAGAR",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FTFPR9991Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 164,
+                "name": "RANJANBEN CHIMANBHAI SONDAGAR",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CMNPS2665A",
+                "total_amount": 95000
+            },
+            {
+                "id": 165,
+                "name": "AKASH NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BDUPN2357K",
+                "total_amount": 95000
+            },
+            {
+                "id": 166,
+                "name": "BHAUTIK JALODRA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BRYPJ3670B",
+                "total_amount": 95000
+            },
+            {
+                "id": 167,
+                "name": "BHAVNABEN N NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BZZPN8789G",
+                "total_amount": 95000
+            },
+            {
+                "id": 168,
+                "name": "HIREN MAKWANA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "EJMPM1795M",
+                "total_amount": 45000
+            },
+            {
+                "id": 169,
+                "name": "JALPA PATEL",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CEKPJ4256D",
+                "total_amount": 95000
+            },
+            {
+                "id": 170,
+                "name": "MANISHABEN BHANUBHAI KACHHADIYA ",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "AQPPK9854R",
+                "total_amount": 45000
+            },
+            {
+                "id": 171,
+                "name": "NISHANT PATEL",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DQOPP0253D",
+                "total_amount": 95000
+            },
+            {
+                "id": 172,
+                "name": "PALLAVI JALODRA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CDAPJ2325L",
+                "total_amount": 95000
+            },
+            {
+                "id": 173,
+                "name": "PRABHABEN JALODRA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BSBPJ6434P",
+                "total_amount": 95000
+            },
+            {
+                "id": 174,
+                "name": "RUSHITA GUJARATI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CWPPG3713F",
+                "total_amount": 95000
+            },
+            {
+                "id": 175,
+                "name": "SAROJ JALODRA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AWQPJ5946G",
+                "total_amount": 95000
+            },
+            {
+                "id": 176,
+                "name": "SHRADDHA CHOPDA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CQKPC9831M",
+                "total_amount": 95000
+            },
+            {
+                "id": 177,
+                "name": "SONAL CHITALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CRBPC6430J",
+                "total_amount": 95000
+            },
+            {
+                "id": 178,
+                "name": "VIVEK GUJARATI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "BYBPG3210J",
+                "total_amount": 45000
+            },
+            {
+                "id": 179,
+                "name": "DIPALI TRIENDRABHAI CHAUHAN",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BRNPC6211L",
+                "total_amount": 95000
+            },
+            {
+                "id": 180,
+                "name": "GAURAV CHIMANBHAI SONDAGAR",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "JLAPS6906M",
+                "total_amount": 45000
+            },
+            {
+                "id": 181,
+                "name": "CHIRAG RAMESHBHAI DAVARIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "CIUPD1140E",
+                "total_amount": 45000
+            },
+            {
+                "id": 182,
+                "name": "JASMIKA NIPULBHAI VAGHELA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CCXPV0697M",
+                "total_amount": 95000
+            },
+            {
+                "id": 183,
+                "name": "GAURAV NIPULBHAI VAGHELA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "BCRPV0282K",
+                "total_amount": 45000
+            },
+            {
+                "id": 184,
+                "name": "VIPASHA PRAVINBHAI GAJERA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CALPG0124L",
+                "total_amount": 95000
+            },
+            {
+                "id": 185,
+                "name": "DAYA HIREN GHEVARIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DEQPG6546Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 186,
+                "name": "PARULBEN BHAVESHBHAI GAJERA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BDYPV6988G",
+                "total_amount": 95000
+            },
+            {
+                "id": 187,
+                "name": "MAYABEN MANUBHAI SOLANKI",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "IYWPS1663B",
+                "total_amount": 95000
+            },
+            {
+                "id": 188,
+                "name": "DHARMESHBHAI PARBATBHAI SHELADIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CUCPS5496L",
+                "total_amount": 95000
+            },
+            {
+                "id": 189,
+                "name": "SHRADDHA SURESHBHAI CHIKHALIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BUYPC5066P",
+                "total_amount": 95000
+            },
+            {
+                "id": 190,
+                "name": "VISHAL DAMJIBHAI DHANDHUKIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EFSPD8916M",
+                "total_amount": 95000
+            },
+            {
+                "id": 191,
+                "name": "DAXABEN KANAKBHAI THUMMAR",
+                "group": "RAJESH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ANZPT2504N",
+                "total_amount": 95000
+            },
+            {
+                "id": 192,
+                "name": "ARMY RAJESHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FEQPR4173Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 193,
+                "name": "BHAVIN VIRANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BTEPV8595D",
+                "total_amount": 95000
+            },
+            {
+                "id": 194,
+                "name": "CHANDUBHAI DABHI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
                 "card_number": "CMNPD7128P",
-                "bill_amount": "505000",
-                "tds_rate": "10",
-                "tds_amount": "50500",
-                "group": "ASHISH"
+                "total_amount": 45000
             },
             {
-                "id": "59",
-                "name": "DOBARIYA H KANUBHAI",
+                "id": 195,
+                "name": "CHIRAG MANJIBHAI VIROLIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "AVXPV7825N",
+                "total_amount": 45000
+            },
+            {
+                "id": 196,
+                "name": "DIVYA VALLABHBHAI GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CHTPV9407N",
+                "total_amount": 95000
+            },
+            {
+                "id": 197,
+                "name": "GEETABEN KOTHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "LPFPK4618M",
+                "total_amount": 95000
+            },
+            {
+                "id": 198,
+                "name": "HARSHAD DOBARIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
                 "card_number": "FBNPD0606N",
-                "bill_amount": "515000",
-                "tds_rate": "10",
-                "tds_amount": "51500",
-                "group": "ASHISH"
+                "total_amount": 45000
             },
             {
-                "id": "60",
-                "name": "KOTADIYA HARSHITKUMAR RAJESHBHAI",
-                "card_number": "IPIPK3392L",
-                "bill_amount": "510000",
-                "tds_rate": "10",
-                "tds_amount": "51000",
-                "group": "ASHISH"
-            },
-            {
-                "id": "61",
-                "name": "SHELADIYA HETAL GOPALBHAI",
+                "id": 199,
+                "name": "HETAL SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
                 "card_number": "DFHPS4452B",
-                "bill_amount": "505000",
-                "tds_rate": "10",
-                "tds_amount": "50500",
-                "group": "ASHISH"
+                "total_amount": 45000
             },
             {
-                "id": "62",
-                "name": "JAYESHKUMAR GOPALBHAI SHELDIYA",
+                "id": 200,
+                "name": "JAYESHBHAI SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
                 "card_number": "GVUPS2176C",
-                "bill_amount": "514000",
-                "tds_rate": "10",
-                "tds_amount": "51400",
-                "group": "ASHISH"
+                "total_amount": 45000
             },
             {
-                "id": "63",
-                "name": "KANUBHAI VALJIBHAI DOBARIYA",
-                "card_number": "AMMPD0257G",
-                "bill_amount": "518000",
-                "tds_rate": "10",
-                "tds_amount": "51800",
-                "group": "ASHISH"
+                "id": 201,
+                "name": "KAMLESHBHAI DHIRAJBHAI SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "total_amount": 95000
             },
             {
-                "id": "64",
-                "name": "DABHI VAIBHAV CHANDUBHAI",
+                "id": 202,
+                "name": "KAUSHAL JANJADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CJCPJ7746R",
+                "total_amount": 95000
+            },
+            {
+                "id": 203,
+                "name": "SONALBEN BHAVESHBHAI BELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GGSPB1178N",
+                "total_amount": 95000
+            },
+            {
+                "id": 204,
+                "name": "SUNIL BHINGARADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BZMPB6367D",
+                "total_amount": 95000
+            },
+            {
+                "id": 205,
+                "name": "TULSI VALLABHBHAI GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CHTPV9344N",
+                "total_amount": 95000
+            },
+            {
+                "id": 206,
+                "name": "UMESH KALUBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CFVPN6258P",
+                "total_amount": 95000
+            },
+            {
+                "id": 207,
+                "name": "URVASHI GADHIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DJXPG5002H",
+                "total_amount": 95000
+            },
+            {
+                "id": 208,
+                "name": "VAIBHAV DABHI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
                 "card_number": "FDSPD3445L",
-                "bill_amount": "508000",
-                "tds_rate": "10",
-                "tds_amount": "50800",
-                "group": "ASHISH"
+                "total_amount": 45000
             },
             {
-                "id": "65",
-                "name": "ABHISHEK DAYALJIBHAI CHAUHAN",
-                "card_number": "BVUPC3741A",
-                "bill_amount": "435000",
-                "tds_rate": "10",
-                "tds_amount": "43500",
-                "group": "NIRMAL"
+                "id": 209,
+                "name": "HEMAL KIRITBHAI PATEL",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BFSPP6873G",
+                "total_amount": 95000
             },
             {
-                "id": "66",
-                "name": "HARDIK ANILBHAI MAKVANA",
+                "id": 210,
+                "name": "RAJESHBHAI VALLABHBHAI CHOVATIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AHQPC1503K",
+                "total_amount": 95000
+            },
+            {
+                "id": 211,
+                "name": "VIJAYBHAI MOHANBHAI DAVARIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "CLIPD7951A",
+                "total_amount": 45000
+            },
+            {
+                "id": 212,
+                "name": "RENUKABEN PRADIPBHAI VAVDIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AQXPV0765C",
+                "total_amount": 95000
+            },
+            {
+                "id": 213,
+                "name": "NIKHIL BODRA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DCOPB0283H",
+                "total_amount": 95000
+            },
+            {
+                "id": 214,
+                "name": "KAVITA PATIL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GUSPD3020D",
+                "total_amount": 95000
+            },
+            {
+                "id": 215,
+                "name": "ILABEN KIRTIKBHAI RABADIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BGKPR6661M",
+                "total_amount": 95000
+            },
+            {
+                "id": 216,
+                "name": "JIGNASHA RAMESHBHAI BHAYANI",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CQTPB0330B",
+                "total_amount": 95000
+            },
+            {
+                "id": 217,
+                "name": "POONAMBEN PRADIPBHAI RABADIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DKMPR3776R",
+                "total_amount": 95000
+            },
+            {
+                "id": 218,
+                "name": "PRABHABEN PATEL",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BLJPP4952P",
+                "total_amount": 95000
+            },
+            {
+                "id": 219,
+                "name": "PRADIPKUMAR SHANTILAL RABADIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ATUPR8578D",
+                "total_amount": 95000
+            },
+            {
+                "id": 220,
+                "name": "KISHORBHAI BORDA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CKKPB6682D",
+                "total_amount": 95000
+            },
+            {
+                "id": 221,
+                "name": "NAYNABEN DHAMELIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CTPPD2366E",
+                "total_amount": 95000
+            },
+            {
+                "id": 222,
+                "name": "HETALBEN JAYESHBHAI MANDANKA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CWXPM8622B",
+                "total_amount": 95000
+            },
+            {
+                "id": 223,
+                "name": "SAILESHBHAI DHOLIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "AUCPD2283Q",
+                "total_amount": 45000
+            },
+            {
+                "id": 224,
+                "name": "SEEMA SEN",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "LZLPS2876R",
+                "total_amount": 95000
+            },
+            {
+                "id": 225,
+                "name": "DIPALIBEN DHAMELIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DDBPD5802G",
+                "total_amount": 95000
+            },
+            {
+                "id": 226,
+                "name": "BHAVESHKUMAR R PATEL",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ANAPP8237H",
+                "total_amount": 95000
+            },
+            {
+                "id": 227,
+                "name": "DEEP NITINBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CLOPN9319N",
+                "total_amount": 95000
+            },
+            {
+                "id": 228,
+                "name": "DHAVAL ARVINDBHAI DOBARIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DFSPD7444P",
+                "total_amount": 95000
+            },
+            {
+                "id": 229,
+                "name": "DHAVAL JAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "BBYPJ9663E",
+                "total_amount": 45000
+            },
+            {
+                "id": 230,
+                "name": "DIXIT DHANJIBHAI BORADA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CRTPB4999R",
+                "total_amount": 95000
+            },
+            {
+                "id": 231,
+                "name": "DRAWKESH VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ARGPV1975J",
+                "total_amount": 95000
+            },
+            {
+                "id": 232,
+                "name": "EVANSI PANELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "GAMPP6892K",
+                "total_amount": 45000
+            },
+            {
+                "id": 233,
+                "name": "GAURAB JAGDISHBHAI DHOLA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HMPPD4144A",
+                "total_amount": 95000
+            },
+            {
+                "id": 234,
+                "name": "HETALBEN JAGDISHBHAI DAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CMWPJ2657L",
+                "total_amount": 95000
+            },
+            {
+                "id": 235,
+                "name": "JALODRA RINKALBEN",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CHAPJ4402L",
+                "total_amount": 95000
+            },
+            {
+                "id": 236,
+                "name": "JAYDIP L RATHOD",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DXGPR3786E",
+                "total_amount": 95000
+            },
+            {
+                "id": 237,
+                "name": "KAMLESH RANGLAL PALIWAL",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DFKPP2860F",
+                "total_amount": 95000
+            },
+            {
+                "id": 238,
+                "name": "LATABEN PURNVERAGI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DUKPP3348P",
+                "total_amount": 95000
+            },
+            {
+                "id": 239,
+                "name": "MALTIBEN KHENI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "PKWPS6156N",
+                "total_amount": 95000
+            },
+            {
+                "id": 240,
+                "name": "MANISHABEN JAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "DLVPG4979P",
+                "total_amount": 45000
+            },
+            {
+                "id": 241,
+                "name": "PARITA ALPESHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BRLPN3989E",
+                "total_amount": 95000
+            },
+            {
+                "id": 242,
+                "name": "PATEL ASHABEN BHAVESHBHAI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GGSPB0876B",
+                "total_amount": 95000
+            },
+            {
+                "id": 243,
+                "name": "PINALBEN CHIRAGKUMAR NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CRTPN2501F",
+                "total_amount": 95000
+            },
+            {
+                "id": 244,
+                "name": "PRAKASH BHUPATBHAI DABHI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HIPPD7695A",
+                "total_amount": 95000
+            },
+            {
+                "id": 245,
+                "name": "PRAVIN CHAVDA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BHSPC0860L",
+                "total_amount": 95000
+            },
+            {
+                "id": 246,
+                "name": "RANJIT PADYUMANBHAI GODALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BZIPG6437P",
+                "total_amount": 95000
+            },
+            {
+                "id": 247,
+                "name": "RAVIKUMAR DEVSHIBHAI RAKHOLIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BYSPR8004C",
+                "total_amount": 95000
+            },
+            {
+                "id": 248,
+                "name": "RAVINDRABHAI VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AHZPV4098H",
+                "total_amount": 95000
+            },
+            {
+                "id": 249,
+                "name": "REENABEN VALLABHBHAI GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DKMPG9358G",
+                "total_amount": 95000
+            },
+            {
+                "id": 250,
+                "name": "VAJUBHAI MOHANBHAI SAVALIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EKMPS8250L",
+                "total_amount": 95000
+            },
+            {
+                "id": 251,
+                "name": "VANDANBEN ATULBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BOIPN8894J",
+                "total_amount": 95000
+            },
+            {
+                "id": 252,
+                "name": "PIYUSHBHAI MANDANAKA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ASPPM3554L",
+                "total_amount": 95000
+            },
+            {
+                "id": 253,
+                "name": "SAMBAD AJAY VASTABHAI",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BZUPV2790N",
+                "total_amount": 95000
+            },
+            {
+                "id": 254,
+                "name": "KAIASHBEN PARESHBHAI VAGHELA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FTPPP5325A",
+                "total_amount": 95000
+            },
+            {
+                "id": 255,
+                "name": "DEEPABEN JAGDISHBHAI CHAUHAN",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BCVPC3866N",
+                "total_amount": 95000
+            },
+            {
+                "id": 256,
+                "name": "RAM SINGH",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EWHPS8250P",
+                "total_amount": 95000
+            },
+            {
+                "id": 257,
+                "name": "OM PIYUSHBHAI MANDANKA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FZSPM0616J",
+                "total_amount": 95000
+            },
+            {
+                "id": 258,
+                "name": "KHUSHALI DHOLIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GVMPD6106B",
+                "total_amount": 95000
+            },
+            {
+                "id": 259,
+                "name": "SAHIL DHOLIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GYGPD6029C",
+                "total_amount": 95000
+            },
+            {
+                "id": 260,
+                "name": "BHARATIBEN KAKADIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 35000,
+                "card_number": "EXHPK5355L",
+                "total_amount": 80000
+            },
+            {
+                "id": 261,
+                "name": "RAVI CHIMANBHAI KAKADIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 32500,
+                "card_number": "EMTPK6722A",
+                "total_amount": 77500
+            },
+            {
+                "id": 262,
+                "name": "RAJESHBHAI BORDA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DXSPB7267Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 263,
+                "name": "RAVIKANT TAPARIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "AGQPT8080P",
+                "total_amount": 45000
+            },
+            {
+                "id": 264,
+                "name": "SAILESHBHAI SOLANKI",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "KPQPS1390N",
+                "total_amount": 95000
+            },
+            {
+                "id": 265,
+                "name": "HARESHBHAI DANKHRA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ASGPD2583H",
+                "total_amount": 95000
+            },
+            {
+                "id": 266,
+                "name": "UMESH PATIL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CEJPP4352R",
+                "total_amount": 95000
+            },
+            {
+                "id": 267,
+                "name": "DAYABEN KORAT",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "BMRPK6899K",
+                "total_amount": 45000
+            },
+            {
+                "id": 268,
+                "name": "DEVANGI VEKARIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "CCCPV6161M",
+                "total_amount": 45000
+            },
+            {
+                "id": 269,
+                "name": "HARDIK MAKVANA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
                 "card_number": "CRLPM8189G",
-                "bill_amount": "440000",
-                "tds_rate": "10",
-                "tds_amount": "44000",
-                "group": "NIRMAL"
+                "total_amount": 45000
             },
             {
-                "id": "67",
-                "name": "DOBARIYA KHUSHAL KIRITBHAI",
-                "card_number": "BMHPD7584C",
-                "bill_amount": "635000",
-                "tds_rate": "10",
-                "tds_amount": "63500",
-                "group": "NIRMAL"
+                "id": 270,
+                "name": "SHREYANSE DEVANI",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "BYYPD4163N",
+                "total_amount": 45000
             },
             {
-                "id": "68",
-                "name": "BAVADIYA JAYDEEP PRAKASHBHAI",
-                "card_number": "BCBPB5431L",
-                "bill_amount": "648000",
-                "tds_rate": "10",
-                "tds_amount": "64800",
-                "group": "NIRMAL"
+                "id": 271,
+                "name": "SONAL PARMAR",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "CWJPP4338P",
+                "total_amount": 45000
             },
             {
-                "id": "69",
-                "name": "KRISHNA SURESHBHAI BHIMANI",
-                "card_number": "DVCPB2259C",
-                "bill_amount": "652000",
-                "tds_rate": "10",
-                "tds_amount": "65200",
-                "group": "NIRMAL"
+                "id": 272,
+                "name": "URMILABEN VEKARIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "AVSPV5410G",
+                "total_amount": 45000
             },
             {
-                "id": "70",
-                "name": "NIRMAL MUKESHBHAI ZALAVADIA",
-                "card_number": "ABFPZ4404M",
-                "bill_amount": "573400",
-                "tds_rate": "1",
-                "tds_amount": "5734",
-                "group": "NIRMAL"
-            },
-            {
-                "id": "71",
-                "name": "BHARGAV BHANUBHAI RADADIYA",
-                "card_number": "DQAPR7902B",
-                "bill_amount": "645800",
-                "tds_rate": "1",
-                "tds_amount": "6458",
-                "group": "NIRMAL"
-            },
-            {
-                "id": "72",
-                "name": "MAYURKUMAR BATUKBHAI",
-                "card_number": "DXVPS4471L",
-                "bill_amount": "624500",
-                "tds_rate": "1",
-                "tds_amount": "6245",
-                "group": "NIRMAL"
-            },
-            {
-                "id": "73",
-                "name": "KHOKHAR HANSABEN KALUBHAI",
+                "id": 273,
+                "name": "HANSABEN KHOKHAR ",
+                "group": "RAJESHBHAI",
+                "tds_amount1": 45000,
                 "card_number": "DOKPK4583M",
-                "bill_amount": "508500",
-                "tds_rate": "10",
-                "tds_amount": "50850",
-                "group": "RAJUBHAI"
+                "total_amount": 45000
             },
             {
-                "id": "74",
-                "name": "KHOKHAR NILAMBAHEN RAJESHKUMAR",
+                "id": 274,
+                "name": "NILAMBEN KHOKHAR",
+                "group": "RAJESHBHAI",
+                "tds_amount1": 45000,
                 "card_number": "DUBPK0947Q",
-                "bill_amount": "518400",
-                "tds_rate": "10",
-                "tds_amount": "51840",
-                "group": "RAJUBHAI"
+                "total_amount": 45000
             },
             {
-                "id": "75",
-                "name": "KALUBHAI DEVJIBHAI KHOKHAR",
-                "card_number": "ABQPK7937D",
-                "bill_amount": "503500",
-                "tds_rate": "10",
-                "tds_amount": "50350",
-                "group": "RAJUBHAI"
+                "id": 275,
+                "name": "JASMIN RAJESHBHAI PIPALIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DUHPP6994L",
+                "total_amount": 95000
             },
             {
-                "id": "76",
-                "name": "DHARMESH SURESHBHAI ZADAFIYA",
-                "card_number": "ABCPZ8199G",
-                "bill_amount": "630000",
-                "tds_rate": "1",
-                "tds_amount": "6300",
-                "group": "JOYAN"
+                "id": 276,
+                "name": "HITESHKUMAR SUNDERLAL SURANA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BEHPS1740D",
+                "total_amount": 95000
             },
             {
-                "id": "77",
-                "name": "PARAS DINESHBHAI CHUDASAMA",
-                "card_number": "CKIPC1801K",
-                "bill_amount": "625000",
-                "tds_rate": "1",
-                "tds_amount": "6250",
-                "group": "JOYAN"
+                "id": 277,
+                "name": "DARSHAN MODI",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 35000,
+                "card_number": "GGUPM7083K",
+                "total_amount": 80000
             },
             {
-                "id": "78",
-                "name": "MUKESHBHAI NATHUBHAI KORAT",
-                "card_number": "AOGPK7204L",
-                "bill_amount": "684200",
-                "tds_rate": "1",
-                "tds_amount": "6842",
-                "group": "NIRMAL"
+                "id": 278,
+                "name": "HARSHITKUMAR KANTHARIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 35000,
+                "card_number": "GVFPK9639K",
+                "total_amount": 80000
             },
             {
-                "id": "79",
-                "name": "KEVADIYA VIKAS BHARATBHAI",
-                "card_number": "EMFPK2117H",
-                "bill_amount": "694500",
-                "tds_rate": "1",
-                "tds_amount": "6945",
-                "group": "NIRMAL"
+                "id": 279,
+                "name": "SAGAR H KANTHARIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 35000,
+                "card_number": "DHOPK8629H",
+                "total_amount": 80000
             },
             {
-                "id": "80",
-                "name": "ANKIT MUKESHBHAI VAGHASIYA",
-                "card_number": "AVYPV1839K",
-                "bill_amount": "678500",
-                "tds_rate": "1",
-                "tds_amount": "6785",
-                "group": "NIRMAL"
+                "id": 280,
+                "name": "JAGDISHBHAI DHOLA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AXAPD6926H",
+                "total_amount": 95000
             },
             {
-                "id": "81",
-                "name": "PRAVIN MANSUKHBHAI DEVANI",
-                "card_number": "ARLPD3334J",
-                "bill_amount": "685700",
-                "tds_rate": "1",
-                "tds_amount": "6857",
-                "group": "NIRMAL"
+                "id": 281,
+                "name": "VANITABEN V PURNVAIRAGI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DUKPP3349N",
+                "total_amount": 95000
             },
             {
-                "id": "82",
-                "name": "JASHUBEN GHANSHYAMBHAI GORASIYA",
-                "card_number": "DUTPG3678A",
-                "bill_amount": "678500",
-                "tds_rate": "1",
-                "tds_amount": "6785",
-                "group": "ASHISH"
+                "id": 282,
+                "name": "UPENDRA P SAH",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DXRPS9281J",
+                "total_amount": 95000
             },
             {
-                "id": "83",
-                "name": "ARTI C SUVAGIYA",
+                "id": 283,
+                "name": "KANUBHAI SUVAGIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BDAPS9413H",
+                "total_amount": 95000
+            },
+            {
+                "id": 284,
+                "name": "NIKUNJ I PARMAR",
+                "group": "JAYAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CUIPP1735M",
+                "total_amount": 95000
+            },
+            {
+                "id": 285,
+                "name": "ARUNABEN PAELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "FOWPP7440N",
+                "total_amount": 45000
+            },
+            {
+                "id": 286,
+                "name": "DIPAKUKUAMAR PURNVAIRAGI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DRKPP1687Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 287,
+                "name": "GHASHYAMBHAI JAYANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "BBZPJ5539C",
+                "total_amount": 45000
+            },
+            {
+                "id": 288,
+                "name": "HETALBEN MANIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DJRPM3642H",
+                "total_amount": 95000
+            },
+            {
+                "id": 289,
+                "name": "JAYSUKHBHAI PANELIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "BDVPP1686G",
+                "total_amount": 45000
+            },
+            {
+                "id": 290,
+                "name": "JAGDISHBHAI SHIROYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DPUPS3635P",
+                "total_amount": 95000
+            },
+            {
+                "id": 291,
+                "name": "KANSHANBEN VAGHASIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AJVPV8546N",
+                "total_amount": 95000
+            },
+            {
+                "id": 292,
+                "name": "MANSUKHBHAI JANJADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AQTPJ9211B",
+                "total_amount": 95000
+            },
+            {
+                "id": 293,
+                "name": "NILAMBEN MANIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EBRPM2836N",
+                "total_amount": 95000
+            },
+            {
+                "id": 294,
+                "name": "RUCHIT SARDHARA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "KDAPS7560C",
+                "total_amount": 95000
+            },
+            {
+                "id": 295,
+                "name": "KANUBHAI DOBARIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "AMMPD0257G",
+                "total_amount": 45000
+            },
+            {
+                "id": 296,
+                "name": "VIMAL MANIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CMMPM4020N",
+                "total_amount": 95000
+            },
+            {
+                "id": 297,
+                "name": "HETALBEN DHAMELIYA",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GFMPB2988M",
+                "total_amount": 95000
+            },
+            {
+                "id": 298,
+                "name": "GITABEN BAVADIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ALOPB2532K",
+                "total_amount": 95000
+            },
+            {
+                "id": 299,
+                "name": "PRAKSHBHAI BAVADIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ALNPB2392L",
+                "total_amount": 95000
+            },
+            {
+                "id": 300,
+                "name": "ABDUL KARIM KHURSHID HUSEN",
+                "group": "JAYDIP",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "AATPQ7494H",
+                "total_amount": 95000
+            },
+            {
+                "id": 301,
+                "name": "HIRABAI PATIL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GPPPP4511D",
+                "total_amount": 95000
+            },
+            {
+                "id": 302,
+                "name": "SHILPABEN GOHIL",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BUFPG0805F",
+                "total_amount": 95000
+            },
+            {
+                "id": 303,
+                "name": "JITESH GOHIL",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ANWPG8195K",
+                "total_amount": 95000
+            },
+            {
+                "id": 304,
+                "name": "KETAN DIYORA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CHDPD0052R",
+                "total_amount": 95000
+            },
+            {
+                "id": 305,
+                "name": "MILAN DHANANI",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EFNPD4409A",
+                "total_amount": 95000
+            },
+            {
+                "id": 306,
+                "name": "PRIYANKA KHUNT",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "IMUPK7896E",
+                "total_amount": 95000
+            },
+            {
+                "id": 307,
+                "name": "SMIT MAHYAVANSI",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FBKPM3084A",
+                "total_amount": 95000
+            },
+            {
+                "id": 308,
+                "name": "JENISH GHEVARIYA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DKQPG3400P",
+                "total_amount": 95000
+            },
+            {
+                "id": 309,
+                "name": "RAMESHBHAI MAKVANA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BAIPM0942E",
+                "total_amount": 95000
+            },
+            {
+                "id": 310,
+                "name": "SMIT GAJERA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DFWPG0930P",
+                "total_amount": 95000
+            },
+            {
+                "id": 311,
+                "name": "SARANGI CHOVATIYA",
+                "group": "NANDAN",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CDOPC4999P",
+                "total_amount": 95000
+            },
+            {
+                "id": 312,
+                "name": "KRUNALI MOVALIYA",
+                "group": "JAYDIP",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BQWPB3481R",
+                "total_amount": 95000
+            },
+            {
+                "id": 313,
+                "name": "VAISHALI BABRIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CWEPB5457J",
+                "total_amount": 95000
+            },
+            {
+                "id": 314,
+                "name": "BHARTIBEN DOMADIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CIUPD8472P",
+                "total_amount": 95000
+            },
+            {
+                "id": 315,
+                "name": "SEJALBEN CHAHAN",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CRCPC6547H",
+                "total_amount": 95000
+            },
+            {
+                "id": 316,
+                "name": "KHUSHAL DOBARIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "BMHPD7584C",
+                "total_amount": 45000
+            },
+            {
+                "id": 317,
+                "name": "ARTI SUHAGIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
                 "card_number": "GCRPS7483E",
-                "bill_amount": "674500",
-                "tds_rate": "1",
-                "tds_amount": "6745",
-                "group": "NIRMAL"
+                "total_amount": 45000
             },
             {
-                "id": "84",
-                "name": "DESAI GAUTAM GHANSHYAMBHAI",
-                "card_number": "DUXPD9928N",
-                "bill_amount": "684000",
-                "tds_rate": "1",
-                "tds_amount": "6840",
-                "group": "NIRMAL"
+                "id": 318,
+                "name": "MUKESHBHAI KORAT",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "AOGPK7204L",
+                "total_amount": 45000
             },
             {
-                "id": "85",
-                "name": "DESAI BIRJESH GHANSHYAMBHAI",
+                "id": 319,
+                "name": "BHUMIKA ZALAVADIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "card_number": "ADPPZ5253N",
+                "total_amount": 45000
+            },
+            {
+                "id": 320,
+                "name": "VOGESH TRADA",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "APIPT0363A",
+                "total_amount": 95000
+            },
+            {
+                "id": 321,
+                "name": "RAJESHKUMAR SHEKHDA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FLRPS5507M",
+                "total_amount": 95000
+            },
+            {
+                "id": 322,
+                "name": "JANVI TEJANI",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BSMPT6029B",
+                "total_amount": 95000
+            },
+            {
+                "id": 323,
+                "name": "HANSABEN MADAKANA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DQSPM2184N",
+                "total_amount": 95000
+            },
+            {
+                "id": 324,
+                "name": "VRAJLAL MADAKANA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "ATKPM1029L",
+                "total_amount": 95000
+            },
+            {
+                "id": 325,
+                "name": "VIPULBHAI JALANDHARA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BHBPJ2369A",
+                "total_amount": 95000
+            },
+            {
+                "id": 326,
+                "name": "PARULBEN SHELADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "PGPPS5218J",
+                "total_amount": 95000
+            },
+            {
+                "id": 327,
+                "name": "HETALBEN SAVANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "PIPPS4736B",
+                "total_amount": 95000
+            },
+            {
+                "id": 328,
+                "name": "KALUBHAI KHOKHAR",
+                "group": "RAJUBHAI",
+                "tds_amount1": 45000,
+                "card_number": "ABQPK7937D",
+                "total_amount": 45000
+            },
+            {
+                "id": 329,
+                "name": "HET GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CEPPG1469E",
+                "total_amount": 95000
+            },
+            {
+                "id": 330,
+                "name": "CHIMANBHAI SONDAGAR",
+                "group": "GAURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CCGPS7478Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 331,
+                "name": "BHIMJIBHAI SAKDASARIYA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FXIPS7132D",
+                "total_amount": 95000
+            },
+            {
+                "id": 332,
+                "name": "VASANTBEN SAKDASARIYA",
+                "group": "ANIKET",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "HHSPS4450Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 333,
+                "name": "HARDIK BUTANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "card_number": "DOSPB4620G",
+                "total_amount": 45000
+            },
+            {
+                "id": 334,
+                "name": "PARTH SURESHBHAI SONANI",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "IYWPS1075K",
+                "total_amount": 95000
+            },
+            {
+                "id": 335,
+                "name": "KAKADIYA HITESH MAHESHBHAI",
+                "group": "GOURAV",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DELPK8007R",
+                "total_amount": 95000
+            },
+            {
+                "id": 336,
+                "name": "SUDHA DEVANI",
+                "group": "NIRMAL",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "EGIPD6636R",
+                "total_amount": 95000
+            },
+            {
+                "id": 337,
+                "name": "ASHOK PUROHIT",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BOGPP5927N",
+                "total_amount": 95000
+            },
+            {
+                "id": 338,
+                "name": "PRATIKSHABEN H KACHHADIYA",
+                "group": "RAJUBHAI",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "KWKPK5567E",
+                "total_amount": 95000
+            },
+            {
+                "id": 339,
+                "name": "BHESAL HARSH",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 35000,
+                "card_number": "EPJPB0825L",
+                "total_amount": 80000
+            },
+            {
+                "id": 340,
+                "name": "PARMAR JAYSUKHBHAI NAGJIBHAI",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "CMRPP3630C",
+                "total_amount": 95000
+            },
+            {
+                "id": 341,
+                "name": "PIYUSH KHUNT",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "BAIPH6758R",
+                "total_amount": 95000
+            },
+            {
+                "id": 342,
+                "name": "PUSHPABEN KANTHARIYA",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "DPTPK2057C",
+                "total_amount": 95000
+            },
+            {
+                "id": 343,
+                "name": "SANJAY PATIL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "GPPPP4517F",
+                "total_amount": 95000
+            },
+            {
+                "id": 344,
+                "name": "SHARAD SHAMBHAJI PATIL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "FQPPP2861E",
+                "total_amount": 95000
+            },
+            {
+                "id": 345,
+                "name": "SUVAGIYA NANDLAL",
+                "group": "PRATIK",
+                "tds_amount1": 45000,
+                "tds_amount2": 50000,
+                "card_number": "IZTPS8826Q",
+                "total_amount": 95000
+            },
+            {
+                "id": 346,
+                "name": "BHAVIN NITINBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 45000,
+                "tds_amount2": 0,
+                "card_number": "CBCPN5753J",
+                "total_amount": 45000
+            },
+            {
+                "id": 347,
+                "name": "DHARMENDRA MOKADBHAI VIRANI",
+                "group": "ASHISH",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "BTVPV8369L",
+                "total_amount": 50000
+            },
+            {
+                "id": 348,
+                "name": "MAMTABEN RAJUBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "BZZPN8791A",
+                "total_amount": 50000
+            },
+            {
+                "id": 349,
+                "name": "PIYUSH VINUBHAI ANGHAN ",
+                "group": "ASHISH",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "DDDPA0491N",
+                "total_amount": 50000
+            },
+            {
+                "id": 350,
+                "name": "RAJESHBHAI VALLABHBHAI NAVADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "BFBPN2571Q",
+                "total_amount": 50000
+            },
+            {
+                "id": 351,
+                "name": "REKHABEN BHOLABHAI GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "CMQPG0604L",
+                "total_amount": 50000
+            },
+            {
+                "id": 352,
+                "name": "SURBHI GODHANI",
+                "group": "ASHISH",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "BXDPV4558B",
+                "total_amount": 50000
+            },
+            {
+                "id": 353,
+                "name": "BRIJESH DESAI",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
                 "card_number": "FPYPD0762J",
-                "bill_amount": "657500",
-                "tds_rate": "1",
-                "tds_amount": "6575",
-                "group": "NIRMAL"
+                "total_amount": 50000
             },
             {
-                "id": "86",
-                "name": "SUDANI RAMILABEN GHANSHYAMBHAI",
-                "card_number": "LCCPS8376N",
-                "bill_amount": "668500",
-                "tds_rate": "10",
-                "tds_amount": "66850",
-                "group": "NIRMAL"
-            },
-            {
-                "id": "87",
-                "name": "GHANSHYAMBHAI SHAMJIBHAI SUDANI",
-                "card_number": "FQIPS1758A",
-                "bill_amount": "682000",
-                "tds_rate": "1",
-                "tds_amount": "6820",
-                "group": "NIRMAL"
-            },
-            {
-                "id": "88",
-                "name": "SUDANI DIVYESH GHANSHYAMBHAI",
+                "id": 354,
+                "name": "DIVYESH SUDANI",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
                 "card_number": "DGCPG5207E",
-                "bill_amount": "658700",
-                "tds_rate": "1",
-                "tds_amount": "6587",
-                "group": "NIRMAL"
+                "total_amount": 50000
             },
             {
-                "id": "89",
-                "name": "LATHIYA VIMAL CHATURBHAI",
-                "card_number": "ANCPL2267M",
-                "bill_amount": "649500",
-                "tds_rate": "1",
-                "tds_amount": "6495",
-                "group": "NIRMAL"
+                "id": 355,
+                "name": "GHANSHYAM SUDANI",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "FQIPS1758A",
+                "total_amount": 50000
             },
             {
-                "id": "90",
-                "name": "JIGNESH RANCHHODBHAI VAGHELA",
-                "card_number": "AQOPV3697A",
-                "bill_amount": "677900",
-                "tds_rate": "1",
-                "tds_amount": "6779",
-                "group": "NIRMAL"
+                "id": 356,
+                "name": "JAYDEEP BAVADIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "BCBPB5431L",
+                "total_amount": 50000
             },
             {
-                "id": "91",
-                "name": "CHANDRESH HIMMATBHAI PARMAR",
-                "card_number": "COFPP2206A",
-                "bill_amount": "672500",
-                "tds_rate": "2",
-                "tds_amount": "13450",
-                "group": "NIRMAL"
+                "id": 357,
+                "name": "RAMILA SUDANI",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "LCCPS8376N",
+                "total_amount": 50000
             },
             {
-                "id": "92",
-                "name": "PINALBAHEN JIVRAJBHAI LATHIYA",
-                "card_number": "AQDPL2437R",
-                "bill_amount": "657800",
-                "tds_rate": "1",
-                "tds_amount": "6578",
-                "group": "ASHISH"
-            },
-            {
-                "id": "93",
-                "name": "SOLANKI BHAVNABEN RAJUBHAI",
-                "card_number": "GNJPS0790B",
-                "bill_amount": "654000",
-                "tds_rate": "1",
-                "tds_amount": "6540",
-                "group": "ASHISH"
-            },
-            {
-                "id": "94",
-                "name": "KATRODIYA JAYABEN JAYANTIBHAI",
-                "card_number": "EIBPK6862B",
-                "bill_amount": "638500",
-                "tds_rate": "1",
-                "tds_amount": "6385",
-                "group": "ASHISH"
-            },
-            {
-                "id": "95",
-                "name": "KATRODIYA JAYANTIBHAI PARSHOTAMBHAI",
-                "card_number": "EIBPK7750J",
-                "bill_amount": "674800",
-                "tds_rate": "1",
-                "tds_amount": "6748",
-                "group": "ASHISH"
-            },
-            {
-                "id": "96",
-                "name": "HARDIK MAHESHBHAI DHAMELIYA",
-                "card_number": "CKMPD2029Q",
-                "bill_amount": "662000",
-                "tds_rate": "1",
-                "tds_amount": "6620",
-                "group": "ASHISH"
-            },
-            {
-                "id": "97",
-                "name": "LABHUBEN  MAHESHBHAI DHAMELIYA",
-                "card_number": "AMBPD2030J",
-                "bill_amount": "673500",
-                "tds_rate": "1",
-                "tds_amount": "6735",
-                "group": "ASHISH"
-            },
-            {
-                "id": "98",
-                "name": "ASHABEN PRAKASHBHAI DHAMELIYA",
-                "card_number": "AZTPD2473J",
-                "bill_amount": "665400",
-                "tds_rate": "1",
-                "tds_amount": "6654",
-                "group": "ASHISH"
-            },
-            {
-                "id": "99",
-                "name": "PRAKASHBHAI VASHRAMBHAI DHAMELIYA",
-                "card_number": "AMLPD9011D",
-                "bill_amount": "662800",
-                "tds_rate": "1",
-                "tds_amount": "6628",
-                "group": "ASHISH"
-            },
-            {
-                "id": "100",
-                "name": "MITVA DINESHBHAI DHAMELIYA",
-                "card_number": "CTRPD6461N",
-                "bill_amount": "658200",
-                "tds_rate": "1",
-                "tds_amount": "6582",
-                "group": "ASHISH"
-            },
-            {
-                "id": "101",
-                "name": "SATISHKUMAR MERAMBHAI VANIYA",
-                "card_number": "BGVPV9131M",
-                "bill_amount": "654500",
-                "tds_rate": "1",
-                "tds_amount": "6545",
-                "group": "ASHISH"
-            },
-            {
-                "id": "102",
-                "name": "JAYESH BABUBHAI KATARIYA",
-                "card_number": "HMCPK8657N",
-                "bill_amount": "679500",
-                "tds_rate": "1",
-                "tds_amount": "6795",
-                "group": "ASHISH"
-            },
-            {
-                "id": "103",
-                "name": "MERAMBHAI NAGJIBHAI VANIYA",
-                "card_number": "BDOPV6475L",
-                "bill_amount": "672600",
-                "tds_rate": "1",
-                "tds_amount": "6726",
-                "group": "ASHISH"
-            },
-            {
-                "id": "104",
-                "name": "HIRAPARA SACHIN MANSUKHBHAI",
+                "id": 358,
+                "name": "SACHIN HIRPARA",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
                 "card_number": "ANBPH5642K",
-                "bill_amount": "656500",
-                "tds_rate": "1",
-                "tds_amount": "6565",
-                "group": "NIRMAL"
+                "total_amount": 50000
             },
             {
-                "id": "105",
-                "name": "HARSHABEN MUKESHBHAI ZALAVADIYA HUF",
-                "card_number": "AAGHH7280D",
-                "bill_amount": "674200",
-                "tds_rate": "1",
-                "tds_amount": "6742",
-                "group": "NIRMAL"
+                "id": 359,
+                "name": "VIMAL LATHIYA",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "ANCPL2267M",
+                "total_amount": 50000
             },
             {
-                "id": "106",
-                "name": "CHIRAG HARESHBHAI DAKHARA",
-                "card_number": "CNGPD0592M",
-                "bill_amount": "660500",
-                "tds_rate": "2",
-                "tds_amount": "13210",
-                "group": "NIRMAL"
+                "id": 360,
+                "name": "DESAI GAUTAM",
+                "group": "NIRMAL",
+                "tds_amount1": 50000,
+                "tds_amount2": 0,
+                "card_number": "DUXPD9928N",
+                "total_amount": 50000
             },
             {
-                "id": "107",
-                "name": "CHAMPABEN MANUBHAI BARVALIYA",
-                "card_number": "ASDPB5371L",
-                "bill_amount": "678400",
-                "tds_rate": "2",
-                "tds_amount": "13568",
-                "group": "RAJUBHAI"
+                "id": 361,
+                "name": "ARUNABEN MUNGALPURA",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "BSWPM9105M",
+                "total_amount": 55000
             },
             {
-                "id": "108",
-                "name": "KARTIK JAYSUKHBHAI CHOPDA",
-                "card_number": "CAAPC7882C",
-                "bill_amount": "668200",
-                "tds_rate": "2",
-                "tds_amount": "13364",
-                "group": "ASHISH"
+                "id": 362,
+                "name": "ASHABEN ASHOKBHAI MULANI",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "GGWPM8488N",
+                "total_amount": 55000
             },
             {
-                "id": "109",
-                "name": "CHOPDA HANSABEN CHANDUBHAI",
-                "card_number": "CMHPC2738N",
-                "bill_amount": "676100",
-                "tds_rate": "1",
-                "tds_amount": "6761",
-                "group": "ASHISH"
+                "id": 363,
+                "name": "BHARATBHAI MANGUKIYA",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "DCLPM3095K",
+                "total_amount": 55000
             },
             {
-                "id": "110",
-                "name": "NIKUNJ HIMMATBHAI PATEL",
-                "card_number": "CPNPP9290R",
-                "bill_amount": "663700",
-                "tds_rate": "1",
-                "tds_amount": "6637",
-                "group": "ASHISH"
+                "id": 364,
+                "name": "NATUBHAI NANJIBHAI DESAI",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "DRWPD7337H",
+                "total_amount": 55000
             },
             {
-                "id": "111",
-                "name": "MEET DINESHBHAI MADALIYA",
-                "card_number": "EWMPM1047P",
-                "bill_amount": "658500",
-                "tds_rate": "1",
-                "tds_amount": "6585",
-                "group": "ASHISH"
+                "id": 365,
+                "name": "DHRUVIN SURESHBHAI MAVANI",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "DGVPM0646G",
+                "total_amount": 55000
             },
             {
-                "id": "112",
-                "name": "KOLADIYA NIKUNJ ARVINDBHAI",
-                "card_number": "HCNPK7955J",
-                "bill_amount": "674300",
-                "tds_rate": "1",
-                "tds_amount": "6743",
-                "group": "ASHISH"
+                "id": 366,
+                "name": "ASHISH NARSHIBHAI ITALIYA",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "ACHPI6252R",
+                "total_amount": 55000
             },
             {
-                "id": "113",
-                "name": "HIRAL HARESHBHAI KHUNT",
-                "card_number": "FXPPK0017J",
-                "bill_amount": "669200",
-                "tds_rate": "2",
-                "tds_amount": "13384",
-                "group": "ASHISH"
+                "id": 367,
+                "name": "YASH SURESHBHAI MAVANI",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "ELEPM7836M",
+                "total_amount": 55000
             },
             {
-                "id": "114",
-                "name": "KHUNT JAYESH PRAVINBHAI",
-                "card_number": "HDIPK5545N",
-                "bill_amount": "654800",
-                "tds_rate": "1",
-                "tds_amount": "6548",
-                "group": "ASHISH"
+                "id": 368,
+                "name": "NIRAV SURESHBHAI ZALAVADIYA",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "ABYPZ0050C",
+                "total_amount": 55000
             },
             {
-                "id": "115",
-                "name": "URVISHA KANAKBHAI THUMMAR",
-                "card_number": "BYZPT7935D",
-                "bill_amount": "662500",
-                "tds_rate": "2",
-                "tds_amount": "13250",
-                "group": "RAJUBHAI"
+                "id": 369,
+                "name": "PANKHIL BHARATBHAI MANGUKIYA",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "DFRPM9272M",
+                "total_amount": 55000
             },
             {
-                "id": "116",
-                "name": "ARVINDBHAI HIRJIBHAI SAVANI",
-                "card_number": "BKKPS6221G",
-                "bill_amount": "654800",
-                "tds_rate": "1",
-                "tds_amount": "6548",
-                "group": "JOYAN"
+                "id": 370,
+                "name": "SURESHBHAI VALLABHBHAI MAVANI",
+                "group": "PRATIK",
+                "tds_amount1": 55000,
+                "tds_amount2": 0,
+                "card_number": "BXIPM3391Q",
+                "total_amount": 55000
             },
             {
-                "id": "117",
-                "name": "RINKESH YOGESHBHAI PAREKH",
-                "card_number": "EEHPP4958B",
-                "bill_amount": "786450",
-                "tds_rate": "1",
-                "tds_amount": "7864.5",
-                "group": "ASHISH"
+                "id": 371,
+                "name": "RAVINABEN SARDHARA",
+                "group": "JAYDIP",
+                "tds_amount1": 95000,
+                "tds_amount2": 0,
+                "card_number": "DQQPS3954G",
+                "total_amount": 95000
             },
             {
-                "id": "118",
-                "name": "PORIYA RONAK HARESHBHAI",
-                "card_number": "DEMPP2375N",
-                "bill_amount": "784690",
-                "tds_rate": "1",
-                "tds_amount": "7846.9",
-                "group": "ASHISH"
+                "id": 372,
+                "name": "ASHMITABEN SAVANI",
+                "group": "ANIKET",
+                "tds_amount1": 149930,
+                "tds_amount2": 0,
+                "card_number": "ONGPS2572L",
+                "total_amount": 149930
             },
             {
-                "id": "119",
-                "name": "NIRAV NANNUBHAI",
-                "card_number": "BVUPG7433B",
-                "bill_amount": "783500",
-                "tds_rate": "1",
-                "tds_amount": "7835",
-                "group": "ASHISH"
+                "id": 373,
+                "name": "JAYSHREE SAKDASRIYA",
+                "group": "ANIKET",
+                "tds_amount1": 99850,
+                "tds_amount2": 0,
+                "card_number": "NGNPS0660C",
+                "total_amount": 99850
             },
             {
-                "id": "120",
-                "name": "UPADHYAY MOSAM KALPESHBHAI",
-                "card_number": "AHDPU7698G",
-                "bill_amount": "794800",
-                "tds_rate": "1",
-                "tds_amount": "7948",
-                "group": "ASHISH"
+                "id": 374,
+                "name": "JAYDEEP GHEVARIYA",
+                "group": "ANIKET",
+                "tds_amount1": 100160,
+                "tds_amount2": 0,
+                "card_number": "DFWPG9878C",
+                "total_amount": 100160
             },
             {
-                "id": "121",
-                "name": "TRIVEDI REVANT RAHULKUMAR",
-                "card_number": "BSHPT6731R",
-                "bill_amount": "788200",
-                "tds_rate": "1",
-                "tds_amount": "7882",
-                "group": "ANIKET JEMISH"
+                "id": 375,
+                "name": "HETVI CHOVATIYA",
+                "group": "ANIKET",
+                "tds_amount1": 100140,
+                "tds_amount2": 0,
+                "card_number": "CFCPC7186L",
+                "total_amount": 100140
             },
             {
-                "id": "122",
-                "name": "VAISANAV HIMANSHU",
-                "card_number": "APHPV6247G",
-                "bill_amount": "792500",
-                "tds_rate": "1",
-                "tds_amount": "7925",
-                "group": "VARDHMAN"
+                "id": 376,
+                "name": "VAISHALIBEN DAVARIYA",
+                "group": "GOVRAV",
+                "tds_amount1": 100420,
+                "tds_amount2": 0,
+                "card_number": "EUJPD0913C",
+                "total_amount": 100420
             },
             {
-                "id": "123",
-                "name": "NIMBARK POOJA",
-                "card_number": "BZTPN3749J",
-                "bill_amount": "785600",
-                "tds_rate": "1",
-                "tds_amount": "7856",
-                "group": "VARDHMAN"
+                "id": 377,
+                "name": "DEVANSHU PATEL",
+                "group": "NANDAN",
+                "tds_amount1": 100270,
+                "tds_amount2": 0,
+                "card_number": "BXYPP2373R",
+                "total_amount": 100270
             },
             {
-                "id": "124",
-                "name": "RUSHI BHARATBHAI DAYANI",
-                "card_number": "GDXPD5493J",
-                "bill_amount": "779400",
-                "tds_rate": "2",
-                "tds_amount": "15588",
-                "group": "NIMESH"
+                "id": 378,
+                "name": "TWINKLEBEN DHAMELIYA",
+                "group": "NANDAN",
+                "tds_amount1": 100250,
+                "tds_amount2": 0,
+                "card_number": "CKSPD1830K",
+                "total_amount": 100250
             },
             {
-                "id": "125",
-                "name": "MENDPARA URVIL",
-                "card_number": "GBIPM0566C",
-                "bill_amount": "784200",
-                "tds_rate": "2",
-                "tds_amount": "15684",
-                "group": "NIMESH"
+                "id": 379,
+                "name": "SAGAR GAJJAR",
+                "group": "NIRMAL",
+                "tds_amount1": 149780,
+                "tds_amount2": 0,
+                "card_number": "BKMPG4173M",
+                "total_amount": 149780
             },
             {
-                "id": "126",
-                "name": "DHARMIK NARESHBHAI SORATHIYA",
-                "card_number": "MOEPS0818G",
-                "bill_amount": "792500",
-                "tds_rate": "1",
-                "tds_amount": "7925",
-                "group": "NIMESH"
+                "id": 380,
+                "name": "DAYABEN DEVANI",
+                "group": "NIRMAL",
+                "tds_amount1": 150370,
+                "tds_amount2": 0,
+                "card_number": "HTMPD9421A",
+                "total_amount": 150370
             },
             {
-                "id": "127",
-                "name": "KOMALBEN J MIYANI",
-                "card_number": "DHUPM4518R",
-                "bill_amount": "534450",
-                "tds_rate": "5",
-                "tds_amount": "26722.5",
-                "group": "VIRAM"
+                "id": 381,
+                "name": "VIPUL M PATEL",
+                "group": "NIRMAL",
+                "tds_amount1": 100330,
+                "tds_amount2": 0,
+                "card_number": "AQIPP8500A",
+                "total_amount": 100330
             },
             {
-                "id": "128",
-                "name": "DHRUV SAVANI",
-                "card_number": "NLEPS9912P",
-                "bill_amount": "542600",
-                "tds_rate": "5",
-                "tds_amount": "27130",
-                "group": "ANIKET"
+                "id": 382,
+                "name": "JAYDEEP SARDHARA",
+                "group": "JAYDIP",
+                "tds_amount1": 99760,
+                "tds_amount2": 0,
+                "card_number": "CWHPA8216K",
+                "total_amount": 99760
             },
             {
-                "id": "129",
-                "name": "CHANDRESH DOBARIYA",
-                "card_number": "GYUPD1516E",
-                "bill_amount": "540200",
-                "tds_rate": "10",
-                "tds_amount": "54020",
-                "group": "VIRAM"
+                "id": 383,
+                "name": "KAUSHAL ATUL SHAH",
+                "group": "JAYDIP",
+                "tds_amount1": 99750,
+                "tds_amount2": 0,
+                "card_number": "KLUPS9472P",
+                "total_amount": 99750
             },
             {
-                "id": "130",
-                "name": "JAYESH J BHATT",
-                "card_number": "BKAPB4200L",
-                "bill_amount": "536400",
-                "tds_rate": "5",
-                "tds_amount": "26820",
-                "group": "AKASH"
+                "id": 384,
+                "name": "RAJUBHAI BADRI TATI",
+                "group": "PRATIK",
+                "tds_amount1": 89132.22222222222,
+                "tds_amount2": 0,
+                "card_number": "BQEPT5565L",
+                "total_amount": 89132.22222222222
             },
             {
-                "id": "131",
-                "name": "BHAVDEEP SAKADASARIYA",
-                "card_number": "IGGPS3426A",
-                "bill_amount": "536500",
-                "tds_rate": "10",
-                "tds_amount": "53650",
-                "group": "GOPAL JASAPRA"
+                "id": 385,
+                "name": "HARSIT R KOTADIYA",
+                "group": "ASHISH",
+                "tds_amount1": 60110,
+                "tds_amount2": 0,
+                "card_number": "IPIPK3392L",
+                "total_amount": 60110
             },
             {
-                "id": "132",
-                "name": "USHABEN NAVADIYA",
-                "card_number": "AWVPN6017H",
-                "bill_amount": "510800",
-                "tds_rate": "10",
-                "tds_amount": "51080",
-                "group": "ASHISH"
+                "id": 386,
+                "name": "RASHMIN M DONDA",
+                "group": "ASHISH",
+                "tds_amount1": 99240,
+                "tds_amount2": 0,
+                "card_number": "GMFPD0940B",
+                "total_amount": 99240
             },
             {
-                "id": "133",
-                "name": "BHARATBHAI MANILAL KHANPARA",
-                "card_number": "DGQPK7571H",
-                "bill_amount": "1280000",
-                "tds_rate": "1",
-                "tds_amount": "12800",
-                "group": "AKASH"
-            },
-            {
-                "id": "134",
-                "name": "HIMANI JASH UKANI",
-                "card_number": "CZRPG1934M",
-                "bill_amount": "1265000",
-                "tds_rate": "1",
-                "tds_amount": "12650",
-                "group": "ANIKET"
-            },
-            {
-                "id": "135",
-                "name": "IRAG HIMMATBHAI DOBARIYA",
-                "card_number": "BLQPD2477Q",
-                "bill_amount": "1270000",
-                "tds_rate": "1",
-                "tds_amount": "12700",
-                "group": "VIRAM"
-            },
-            {
-                "id": "136",
-                "name": "NIKUNJ SANJAYBHAI GOYANI",
-                "card_number": "CZMPG7003E",
-                "bill_amount": "1260000",
-                "tds_rate": "1",
-                "tds_amount": "12600",
-                "group": "ANIKET"
+                "id": 387,
+                "name": "RITESH PATEL",
+                "group": "ASHISH",
+                "tds_amount1": 100540,
+                "tds_amount2": 0,
+                "card_number": "BUBPP7497N",
+                "total_amount": 100540
             }
         ]
 
@@ -1567,15 +3889,29 @@ exports.addUserDataFromJson = async (req, res) => {
                 name: user.name,
                 card_number: user.card_number,
                 group: user.group,
-                bill_amount: user.bill_amount,
-                tds_rate: user.tds_rate,
-                tds_amount: user.tds_amount
+                tds_amount1: user.tds_amount1,
+                tds_amount2: user.tds_amount2,
+                total_amount: user.total_amount
             })
 
             const card = await newCard.save()
         }))
 
         return res.send(prepareSuccessResponse({}, "Cards saved successfully"))
+    } catch (e) {
+        return res.send(e)
+    }
+}
+
+exports.removeCaptchaError = async (req, res) => {
+    try {
+        let cards = await Card.find({mode_of_payment: "click to refresh image"}).select("_id")
+
+        await Promise.all(cards.map(async (card) => {
+            await Card.findByIdAndUpdate(card._id, {mode_of_payment: "",reference_number :"", is_synced: 0})
+        }))
+
+        return res.send(prepareSuccessResponse({}, "Cards updated successfully"))
     } catch (e) {
         return res.send(e)
     }

@@ -20,6 +20,8 @@ router.delete('/:id', use(cardController.deleteCard))
 
 router.get('/all-card/status', use(cardController.getAllCardStatus))
 
+router.get('/all-card/status-new', use(cardController.getAllCardStatusNew))
+
 router.get('/card/status/:cardID', use(cardController.getCardStatus))
 
 router.post('/add-captcha', use(cardController.addCaptchaCode))
@@ -27,5 +29,7 @@ router.post('/add-captcha', use(cardController.addCaptchaCode))
 router.get('/aaa/get-captcha-image', use(cardController.getCaptchaImage))
 
 router.get('/aaa/add-cards-json', use(cardController.addUserDataFromJson))
+
+router.get('/aaa/remove-captcha-error', use(cardController.removeCaptchaError))
 
 module.exports = router

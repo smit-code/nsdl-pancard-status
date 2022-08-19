@@ -64,7 +64,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form action="/add-captcha" method="POST">
+                <form>
                     <div class="mb-3 add-image">
                         <label for="recipient-name" class="col-form-label">Captcha Image:</label>
                     </div>
@@ -73,7 +73,8 @@
                         <input type="text" class="form-control" name="captcha" id="captcha" placeholder="Enter Captcha Code">
                     </div>
                     <div class="modal-footer">
-                        <button type="submit" class="btn btn-dark">Add Captcha</button>
+<!--                        <button class="btn btn-dark captcha-submit">Add Captcha</button>-->
+                        <button type="button" class="btn btn-success" id="btnUpdate" style="margin-right:10px">Update</button>
                     </div>
                 </form>
             </div>
@@ -109,8 +110,27 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
 -->
 <script>
-    $(document).ready(function() {
+    $(document).ready(function () {
         console.log("IN")
+    });
+
+    $(".all-card-status").click(function(event){
+        event.preventDefault();
+        $("#exampleModal").modal("toggle");
+        $.ajax({
+            url: "/all-card/status",
+            type: "get",
+            success: function (data) {
+                console.log(data)
+                $('#captcha_image').remove();
+                $("#exampleModal").modal("toggle");
+                $('#captcha').val('');
+            },
+            error: function(e){
+                console.log(e.message)
+            }
+        });
+
         function callForImage() {
             console.log("1")
             $.ajax({
@@ -119,26 +139,66 @@
                 success: function (data) {
                     console.log(data)
                     if (data.success) {
-                         if(data.data.captcha_image){
-                             let captchaImage = data.data.captcha_image
-                                 console.log("abc",captchaImage)
+                        if (data.data.captcha_image) {
+                            let captchaImage = data.data.captcha_image
+                            console.log("abc", captchaImage)
+                            //$('#exampleModal').find('.add-image').append(`<img alt="captcha" id="captcha_image" src="/images/${captchaImage}"/>`);
+                            $('#captcha_image').remove();
                             $('.add-image').prepend(`<img alt="captcha" id="captcha_image" src="/images/${captchaImage}"/>`)
-                            $("#exampleModal").modal("toggle");
-                         } else {
-                             console.log("Captcha image not found")
-                         }
+                        } else {
+                            console.log("Captcha image not found")
+                        }
                     } else {
                         console.log("Captcha image not found")
                     }
                 },
             });
-
         }
-
         //Call Every 30 Sec
         callForImage();
-        setInterval(callForImage, 60*250);
+        setInterval(callForImage, 60 * 40);
     });
+
+    // $(".all-card-status").click(function () {
+    //     $("#exampleModal").modal("toggle");
+    // });
+
+    $('#exampleModal').on('shown.bs.modal', function () {
+        $('#captcha').focus()
+    })
+
+    $('.captcha-submit').click(function(){
+        $("#exampleModal").modal("toggle");
+    });
+
+    $("#btnUpdate").on("click", function (e) {
+        // reset the message...
+        e.preventDefault();
+        $("#errorMessage").html("");
+
+        if($("form")[0].checkValidity()) {
+            console.log("in form");
+            let captcha = $("input[name='captcha']").val();
+            console.log("captcha code " + captcha);
+            $.ajax({
+                url: "/add-captcha",
+                type: "POST",
+                data: {
+                    "captcha": captcha
+                },
+                success: function (data) {
+                    console.log(data)
+                },
+            });
+        }else{
+            console.log("invalid form");
+        }
+        $('#captcha_image').remove();
+        $('#captcha').val('').focus();
+    });
+
+
+
 </script>
 
 </body>
