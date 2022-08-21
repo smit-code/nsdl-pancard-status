@@ -20,8 +20,6 @@ router.delete('/:id', use(cardController.deleteCard))
 
 router.get('/all-card/status', use(cardController.getAllCardStatus))
 
-router.get('/all-card/status-new', use(cardController.getAllCardStatusNew))
-
 router.get('/card/status/:cardID', use(cardController.getCardStatus))
 
 router.post('/add-captcha', use(cardController.addCaptchaCode))

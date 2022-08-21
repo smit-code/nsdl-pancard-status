@@ -214,7 +214,7 @@ exports.getAllCardStatus = async (req, res) => {
         is_synced: 0,
         is_dispatched: 0,
         card_number: {$exists: true, $ne: ""}
-    }).sort("id").limit(20);
+    }).sort("id").limit(10);
 
     if (!cards) {
         return res.status(404).json({
@@ -312,108 +312,6 @@ exports.getAllCardStatus = async (req, res) => {
         success: true,
         message: "Card Synced"
     })
-}
-
-exports.getAllCardStatusNew = async (req, res) => {
-    let cards = await Card.find({is_synced: 0, is_dispatched: 0}).sort("id").limit(20);
-    if (!cards) {
-        console.log('Cards not found')
-    }
-
-    async function wait(ms) { // comment 3
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async function doSomething() {
-        // comment 2
-        await wait(1000);
-        await cards.reduce(async (promise, card) => {
-            console.log("1")
-            // const browser = await puppeteer.launch({headless: false})
-            const browser = await puppeteer.launch({
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                ],
-            })
-            const page = await browser.newPage()
-            await page.setViewport({width: 1200, height: 720})
-            await page.goto(process.env.SITE_URL, {
-                waitUntil: 'networkidle2'
-            })
-            // Entering card number
-            await page.type('#pannum', card.card_number)
-            // Selecting year
-            await page.select('select[name="assessmentYear"]', '2022-2023')
-
-            await page.waitForSelector('#imgCode') // wait for the selector to load
-            const element = await page.$('#imgCode')
-            const box = await element.boundingBox()
-            const x = box.x // coordinate x
-            const y = box.y // coordinate y
-            const w = box.width // area width
-            const h = box.height
-
-            const imageName = card.card_number + '-' + Date.now() + '.png'
-            await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_image: imageName})
-
-            // wait for 1 second
-            await page.waitForTimeout(1000)
-
-            await page.screenshot({path: `/images/${imageName}`, clip: {x, y, width: w, height: h}})
-
-            // captchaCode Pass
-            let captchaCode
-            while (true) {
-                console.log('IN')
-                captchaCode = await Card.findOne({card_number: card.card_number})
-                //console.log("captchaCode", captchaCode)
-                if (captchaCode.captcha_code) {
-                    break
-                }
-            }
-            await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
-            await Card.findOneAndUpdate({card_number: card.card_number}, {captcha_code: '', captcha_image: ''})
-            console.log("captcha added")
-            console.log("captcha pass")
-
-            await page.click('.btn-info')
-            await page.waitForNavigation({waitUntil: 'networkidle2'})
-
-            console.log("Form Submit")
-
-            const data = await page.evaluate(() => {
-                const tds = Array.from(document.querySelectorAll('table tr td'))
-                return tds.map(td => td.innerText)
-            });
-
-            let result = JSON.parse(JSON.stringify(data))
-            //console.log("resultresult", result)
-
-            const preCard = {
-                assessment_year: result[1],
-                mode_of_payment: result[2],
-                reference_number: result[3],
-                status: result[4] ? result[4] : "No records found",
-                account_number: result[5],
-                date: result[6],
-                is_synced: 1,
-                is_dispatched: result[4] && result[1] ? 1 : 0,
-            }
-            console.log("preCard", preCard)
-
-            const updatedCard = await Card.findOneAndUpdate({card_number: card.card_number}, preCard)
-            //console.log("result", updatedCard)
-            await browser.close();
-
-            // here we could await something else that is async like DB call
-            document.getElementById('results').append(`${card} `);
-        }, Promise.resolve()); // comment 1
-    }
-
-    setTimeout(() => doSomething(), 1000);
-
-    res.redirect("/")
 }
 
 exports.addCaptchaCode = async (req, res, next) => {
