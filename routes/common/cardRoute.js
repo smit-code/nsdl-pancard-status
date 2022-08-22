@@ -10,7 +10,7 @@ const use = (fn) => (req, res, next) => {
 
 router.post('/', use(cardController.addCard))
 
-router.get('/:id', use(cardController.getCard))
+// router.get('/:id', use(cardController.getCard))
 
 router.get('/', use(cardController.getAllCards))
 
@@ -29,5 +29,7 @@ router.get('/aaa/get-captcha-image', use(cardController.getCaptchaImage))
 router.get('/aaa/add-cards-json', use(cardController.addUserDataFromJson))
 
 router.get('/aaa/remove-captcha-error', use(cardController.removeCaptchaError))
+
+router.get('/groups', use(cardController.getAllGroups))
 
 module.exports = router

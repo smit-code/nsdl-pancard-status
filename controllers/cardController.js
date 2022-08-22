@@ -3814,3 +3814,9 @@ exports.removeCaptchaError = async (req, res) => {
         return res.send(e)
     }
 }
+
+exports.getAllGroups = async (req,res) => {
+    console.log("IN Group")
+    let groups = await Card.find().distinct("group")
+    return res.send(prepareSuccessResponse(groups, "Groups fetch successfully"))
+}
