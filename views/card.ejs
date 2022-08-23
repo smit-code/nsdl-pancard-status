@@ -136,7 +136,6 @@
                 url: "/aaa/get-captcha-image",
                 type: "get",
                 success: function (data) {
-                    console.log(data)
                     if (data.success) {
                         if (data.data.captcha_image) {
                             let captchaImage = data.data.captcha_image
@@ -176,9 +175,7 @@
         $("#errorMessage").html("");
 
         if($("form")[0].checkValidity()) {
-            console.log("in form");
             let captcha = $("input[name='captcha']").val();
-            console.log("captcha code " + captcha);
             $.ajax({
                 url: "/add-captcha",
                 type: "POST",

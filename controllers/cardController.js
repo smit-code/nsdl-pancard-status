@@ -119,7 +119,6 @@ exports.deleteCard = async (req, res, next) => {
 }
 
 exports.getCardStatus = async (req, res) => {
-    console.log("Single Card HITTING")
     const {cardID} = req.params
 
     const card = await Card.find({_id: cardID})
@@ -208,7 +207,6 @@ exports.getCardStatus = async (req, res) => {
 }
 
 exports.getAllCardStatus = async (req, res) => {
-    console.log("HITTING")
 
     const cards = await Card.find({
         is_synced: 0,
@@ -269,11 +267,8 @@ exports.getAllCardStatus = async (req, res) => {
             }
             await page.type('#HID_IMG_TXT1', captchaCode.captcha_code)
             await Card.findOneAndUpdate({card_number:  cards[i].card_number}, {captcha_code: '', captcha_image: ''})
-            console.log("captcha added")
-            console.log("captcha pass")
 
             await page.click('.btn-info')
-            console.log("Form Submit")
             // wait for 1 second
             await page.waitForTimeout(1000)
             console.log("New page")
@@ -3816,7 +3811,6 @@ exports.removeCaptchaError = async (req, res) => {
 }
 
 exports.getAllGroups = async (req,res) => {
-    console.log("IN Group")
     let groups = await Card.find().distinct("group")
     return res.send(prepareSuccessResponse(groups, "Groups fetch successfully"))
 }
