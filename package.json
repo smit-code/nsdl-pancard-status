@@ -22,7 +22,7 @@
     "express": "^4.17.1",
     "joi": "^17.5.0",
     "jsonwebtoken": "^8.5.1",
-    "mongoose": "^6.0.14",
+    "mongoose": "^6.4.6",
     "puppeteer": "^15.4.0",
     "puppeteer-extra": "^3.3.4",
     "puppeteer-extra-plugin-stealth": "^2.11.0",
